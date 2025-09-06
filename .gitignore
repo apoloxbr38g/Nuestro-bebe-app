@@ -1,0 +1,40 @@
+# ---- Python envs / caches
+venv/
+backend/.venv/
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.dylib
+*.dll
+
+# ---- Node / build
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.cache/
+
+# ---- Datos grandes generados
+backend/data/raw/
+backend/data/merged.csv
+backend/data/*.csv
+!backend/data/sample_matches.csv   # dejamos un sample si existe
+
+# ---- Modelos / binarios pesados
+*.joblib
+*.pkl
+*.bin
+*.onnx
+
+# ---- Secretos
+.env
+*.env
+backend/.env
+.env.*
+
+# ---- SO / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
