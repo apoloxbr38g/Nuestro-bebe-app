@@ -87,41 +87,51 @@
 
 <div class="container">
 
-  <!-- ===== TOP: 3 columnas ===== -->
-  <section class="hero3">
-    <!-- IZQUIERDA: controles + escudos -->
-    <div class="card">
-      <h2>Configura tu predicción</h2>
-      <div class="grid">
-        <div class="col-6">
-          <label for="league">Liga</label>
-          <select id="league"></select>
-        </div>
-        <div class="col-6" style="display:flex;align-items:flex-end;justify-content:flex-end">
-          <button id="reload" class="btn" style="min-width:180px">🔄 Cargar ligas</button>
-        </div>
-        <div class="col-6">
-          <label for="home">Local</label>
-          <select id="home"></select>
-        </div>
-        <div class="col-6">
-          <label for="away">Visita</label>
-          <select id="away"></select>
-        </div>
-        <div class="col-12" style="margin-top:8px">
-          <button id="predict" class="btn" style="width:100%;padding:14px 18px;font-size:16px">✨ Predecir partido</button>
-        </div>
-      </div>
-      <div id="hint" class="muted" style="margin-top:10px;font-size:13px">
-        Sugerencia: primero elige la liga y luego los equipos.
+<!-- ===== TOP: 3 columnas ===== -->
+<section class="hero3">
+  <!-- IZQUIERDA: controles + escudos -->
+  <div class="card">
+    <h2>Configura tu predicción</h2>
+
+    <div class="grid">
+      <div class="col-6">
+        <label for="leagueSelect">Liga</label>
+        <select id="leagueSelect" style="min-width:260px;">
+          <option value="">— Selecciona liga —</option>
+        </select>
       </div>
 
-      <!-- Escudos -->
-      <div class="crests">
-        <div class="crest"><img id="crestHome" alt="Home"></div>
-        <div class="crest"><img id="crestAway" alt="Away"></div>
+      <div class="col-6" style="display:flex;align-items:flex-end;justify-content:flex-end">
+        <button id="reload" class="btn" style="min-width:180px">🔄 Cargar ligas</button>
+      </div>
+
+      <div class="col-6">
+        <label for="home">Local</label>
+        <select id="home"></select>
+      </div>
+
+      <div class="col-6">
+        <label for="away">Visita</label>
+        <select id="away"></select>
+      </div>
+
+      <div class="col-12" style="margin-top:8px">
+        <button id="predict" class="btn" style="width:100%;padding:14px 18px;font-size:16px">
+          ✨ Predecir partido
+        </button>
       </div>
     </div>
+
+    <div id="hint" class="muted" style="margin-top:10px;font-size:13px">
+      Sugerencia: primero elige la liga y luego los equipos.
+    </div>
+
+    <!-- Escudos (si ya tenías lógica para poner imágenes, se mantiene) -->
+    <div class="crests">
+      <div class="crest"><img id="crestHome" alt="Home"></div>
+      <div class="crest"><img id="crestAway" alt="Away"></div>
+    </div>
+  </div>
 
     <!-- CENTRO: gráfico -->
     <div class="card">
@@ -274,324 +284,227 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
 <script>
-/* ===== Utilidades ===== */
-const $ = (q) => document.querySelector(q);
-const api = (p) => fetch(p).then(r => { if(!r.ok) throw new Error(r.status+' '+r.statusText); return r.json(); });
-const DEFAULT_LEAGUES = ["SP1","E0","I1","D1","F1","N1","SC1","P1","B1"];
-const LEAGUE_NAMES = { SP1:'LaLiga (ES)', E0:'Premier (EN)', I1:'Serie A (IT)', D1:'Bundesliga (DE)', F1:'Ligue 1 (FR)', N1:'Eredivisie (NL)', SC1:'Scottish Prem (UK)', P1:'Primeira (PT)', B1:'Jupiler Pro (BE)' };
-function fmt(p){ return (p==null||isNaN(p))? '—' : (p*100).toFixed(1)+'%'; }
+/* ===== Helpers mínimos ===== */
+const $  = (q)=>document.querySelector(q);
+const api=(p,opt)=>fetch(p,opt).then(r=>{if(!r.ok)throw new Error(r.status);return r.json();});
+const fmt=(p)=> (p==null||isNaN(p))? '—' : (p*100).toFixed(1)+'%';
 
-/* ===== Gráfico ===== */
-let chart;
-function renderChart(ph, pd, pa){
-  const ctx = document.getElementById('chart');
-  const data = { labels:['Local','Empate','Visita'], datasets:[{ label:'Prob', data:[ph,pd,pa] }] };
-  if(chart){ chart.data = data; chart.update(); return; }
-  chart = new Chart(ctx, { type:'bar', data, options:{ responsive:true, scales:{ y:{ beginAtZero:true, max:1 } } } });
+/* ===== Ligas (con banderitas) ===== */
+const PRED_ORDER = ["SP1","E0","D1","I1","F1","N1","P1","SC0","B1","T1","J1","G1","UKR"];
+const PRED_LABEL = {
+  SP1:"LaLiga (ES)", E0:"Premier (EN)", D1:"Bundesliga (DE)", I1:"Serie A (IT)", F1:"Ligue 1 (FR)",
+  N1:"Eredivisie (NL)", P1:"Primeira (PT)", SC0:"Scottish Prem (UK)", B1:"Jupiler Pro (BE)",
+  T1:"Superliga (TR)", J1:"J1 League (JP)", G1:"Superliga (GR)", UKR:"Premier League (UA)"
+};
+const PRED_FLAG = {
+  SP1:"🇪🇸", E0:"🇬🇧", D1:"🇩🇪", I1:"🇮🇹", F1:"🇫🇷", N1:"🇳🇱",
+  P1:"🇵🇹", SC0:"🏴", B1:"🇧🇪", T1:"🇹🇷", J1:"🇯🇵", G1:"🇬🇷", UKR:"🇺🇦"
+};
+/* Compat: el resto del código usa estas */
+const LEAGUE_NAMES   = PRED_LABEL;
+const DEFAULT_LEAGUES= PRED_ORDER;
+
+async function safeGet(url){ try{const r=await fetch(url); if(!r.ok) throw 0; return await r.json();}catch{ return null; } }
+
+async function loadPredictionLeagues(){
+  const sel = $('#leagueSelect'); if(!sel) return;
+  const data = await safeGet("/leagues/supported");
+  const map = Object.fromEntries((data?.leagues || []).map(x=>[x.code,x]));
+  sel.innerHTML = '<option value="">— Selecciona liga —</option>';
+  PRED_ORDER.forEach(code=>{
+    const flag=PRED_FLAG[code]||"🏳️", name=PRED_LABEL[code]||code, has=map[code]?.has_data?" · ✓ datos":"";
+    const opt=document.createElement('option'); opt.value=code; opt.textContent=`${flag} ${name}${has}`;
+    sel.appendChild(opt);
+  });
 }
 
-/* ===== Sidebar ===== */
-function renderSidebarMetrics(r){
-  const set = (id, val, asPct=false) => {
-    const el = document.getElementById(id);
-    if(!el) return;
-    el.textContent = (val==null || (asPct && isNaN(val))) ? '—' : (asPct ? (val*100).toFixed(1)+'%' : val);
-  };
-  set('sb_xgh', r.exp_goals_home);
-  set('sb_xga', r.exp_goals_away);
-  set('sb_xgt', r.exp_goals_total);
-  set('sb_over', r.ou_over25, true);
-  set('sb_under', r.ou_under25, true);
-  set('sb_bttsYes', r.btts_yes, true);
-  set('sb_bttsNo',  r.btts_no,  true);
-  set('sb_cornh', r.exp_corners_home);
-  set('sb_corna', r.exp_corners_away);
-  set('sb_cort',  r.exp_corners_total);
-  set('sb_corOver',  r.corners_over95,  true);
-  set('sb_corUnder', r.corners_under95, true);
-  set('sb_yelh', r.exp_yellows_home);
-  set('sb_yela', r.exp_yellows_away);
-  set('sb_yelt', r.exp_yellows_total);
-  set('sb_yelOver',  r.yellows_over45,  true);
-  set('sb_yelUnder', r.yellows_under45, true);
-  set('sb_redh', r.exp_reds_home);
-  set('sb_reda', r.exp_reds_away);
-  set('sb_redt', r.exp_reds_total);
-  set('sb_g0',  r.p_goals_0,     true);
-  set('sb_g1',  r.p_goals_1,     true);
-  set('sb_g2',  r.p_goals_2,     true);
-  set('sb_g3p', r.p_goals_3plus, true);
-}
-
-/* ===== Escudos dinámicos ===== */
-const TEAM_ALIASES = {
-  "Real Madrid": "real-madrid",
-  "Barcelona": "barcelona",
-  "Atlético Madrid": "atletico-madrid",
-  "Ath Bilbao": "athletic-bilbao",
-  "Celta Vigo": "celta",
-  "Nott'm Forest": "nottingham-forest",
-  "Man United": "manchester-united",
-  "Man City": "manchester-city",
+/* ===== Escudos ===== */
+const TEAM_ALIASES={
+  "Real Madrid":"real-madrid","Barcelona":"barcelona","Atlético Madrid":"atletico-madrid","Ath Bilbao":"athletic-bilbao",
+  "Celta Vigo":"celta","Nott'm Forest":"nottingham-forest","Man United":"manchester-united","Man City":"manchester-city",
 };
 function slugifyTeam(name){
   if(!name) return "";
   if(TEAM_ALIASES[name]) return TEAM_ALIASES[name];
-  return name.toLowerCase()
-             .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-             .replace(/[^a-z0-9]+/g,'-')
-             .replace(/(^-|-$)/g,'');
+  return name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
 }
 function setCrests(home, away){
-  const imgH = document.getElementById('crestHome');
-  const imgA = document.getElementById('crestAway');
-  const fallback = 'assets/logo.png';
-  const srcH = `assets/crests/${slugifyTeam(home)}.png`;
-  const srcA = `assets/crests/${slugifyTeam(away)}.png`;
-  const safeSet = (img, src) => { if(!img) return; img.onerror=()=>{img.onerror=null;img.src=fallback}; img.src=src; img.alt=src; };
-  safeSet(imgH, srcH); safeSet(imgA, srcA);
+  const imgH=$('#crestHome'), imgA=$('#crestAway'), fallback='assets/logo.png';
+  const srcH=`assets/crests/${slugifyTeam(home)}.png`, srcA=`assets/crests/${slugifyTeam(away)}.png`;
+  const safe=(img,src)=>{ if(!img) return; img.onerror=()=>{img.onerror=null;img.src=fallback}; img.src=src; img.alt=src; };
+  safe(imgH,srcH); safe(imgA,srcA);
 }
-function updateCrestsFromSelects(){
-  const home = document.getElementById('home')?.value;
-  const away = document.getElementById('away')?.value;
-  setCrests(home, away);
+function updateCrestsFromSelects(){ setCrests($('#home')?.value, $('#away')?.value); }
+
+/* ===== Sidebar y gráfico ===== */
+let chart;
+function renderChart(ph,pd,pa){
+  const ctx=$('#chart');
+  const data={labels:['Local','Empate','Visita'],datasets:[{label:'Prob',data:[ph,pd,pa]}]};
+  if(chart){ chart.data=data; chart.update(); return; }
+  chart=new Chart(ctx,{type:'bar',data,options:{responsive:true,scales:{y:{beginAtZero:true,max:1}},plugins:{legend:{display:false}}}});
+}
+function renderSidebarMetrics(r){
+  const set=(id,val,asPct=false)=>{ const el=$('#'+id); if(!el) return; el.textContent=(val==null|| (asPct&&isNaN(val)))?'—':(asPct?(val*100).toFixed(1)+'%':val); };
+  set('sb_xgh',r.exp_goals_home); set('sb_xga',r.exp_goals_away); set('sb_xgt',r.exp_goals_total);
+  set('sb_over',r.ou_over25,true); set('sb_under',r.ou_under25,true);
+  set('sb_bttsYes',r.btts_yes,true); set('sb_bttsNo',r.btts_no,true);
+  set('sb_cornh',r.exp_corners_home); set('sb_corna',r.exp_corners_away); set('sb_cort',r.exp_corners_total);
+  set('sb_corOver',r.corners_over95,true); set('sb_corUnder',r.corners_under95,true);
+  set('sb_yelh',r.exp_yellows_home); set('sb_yela',r.exp_yellows_away); set('sb_yelt',r.exp_yellows_total);
+  set('sb_yelOver',r.yellows_over45,true); set('sb_yelUnder',r.yellows_under45,true);
+  set('sb_redh',r.exp_reds_home); set('sb_reda',r.exp_reds_away); set('sb_redt',r.exp_reds_total);
+  set('sb_g0',r.p_goals_0,true); set('sb_g1',r.p_goals_1,true); set('sb_g2',r.p_goals_2,true); set('sb_g3p',r.p_goals_3plus,true);
 }
 
-/* ===== Init + Health + Ligas ===== */
+/* ===== Init/health + ligas recientes ===== */
 async function init(){
   try{
-    const h = await api('/health');
-    $('#apiState').textContent = 'OK'; $('#apiState').className = 'ok';
-    $('#apiTeams').textContent = h.teams?.length ?? '—';
-  }catch(e){ $('#apiState').textContent = 'Error'; $('#apiState').className = 'err'; }
-
+    const h=await api('/health');
+    $('#apiState').textContent='OK'; $('#apiState').className='ok';
+    $('#apiTeams').textContent=h.teams?.length ?? '—';
+  }catch{ $('#apiState').textContent='Error'; $('#apiState').className='err'; }
+}
+async function loadRecent(){
   try{
-    const l = await api('/leagues');
-    const sel = $('#league'); sel.innerHTML = '';
-    const opt0 = document.createElement('option'); opt0.text = '— Selecciona liga —'; opt0.value=''; sel.appendChild(opt0);
-    (l.leagues||[]).forEach(code=>{
-      const o=document.createElement('option'); o.value = code; o.text = LEAGUE_NAMES[code] || code; sel.appendChild(o);
+    const data=await api("/recent?limit=10");
+    const body=$("#recentBody"), hint=$("#recentHint"); body.innerHTML="";
+    if(!data.matches || !data.matches.length){ hint.innerText="No hay partidos recientes."; return; }
+    hint.style.display="none";
+    data.matches.forEach(m=>{
+      const tr=document.createElement("tr");
+      const score=(m.FTHG==null||m.FTAG==null)?"—":`${m.FTHG} - ${m.FTAG}`;
+      let cls="draw"; if(m.FTHG!=null && m.FTAG!=null){ if(m.FTHG>m.FTAG) cls="win"; else if(m.FTHG<m.FTAG) cls="loss"; }
+      tr.innerHTML=`
+        <td style="padding:8px">${m.Date || "—"}</td>
+        <td style="padding:8px">${(LEAGUE_NAMES[m.League]||m.League||"—")}</td>
+        <td style="padding:8px" class="${cls}">${m.HomeTeam || "—"}</td>
+        <td style="padding:8px" class="score">${score}</td>
+        <td style="padding:8px" class="${cls==="win"?"loss":(cls==="loss"?"win":"draw")}">${m.AwayTeam || "—"}</td>`;
+      body.appendChild(tr);
     });
-  }catch(e){ console.warn('leagues', e); }
+  }catch{ $("#recentHint").innerText="Error al cargar."; }
 }
 
-/* ===== Equipos por liga ===== */
+/* ===== Equipos por liga (unificada y usando #leagueSelect) ===== */
 async function loadTeams(){
-  const lg = $('#league').value;
-  if(!lg){ $('#home').innerHTML=''; $('#away').innerHTML=''; updateCrestsFromSelects(); return; }
-  const t = await api('/teams?league='+encodeURIComponent(lg));
-  const teams = t.teams || [];
-  const fill = (el) => { el.innerHTML=''; teams.forEach(x=>{ const o=document.createElement('option'); o.value=o.text=x; el.appendChild(o); }); };
-  fill($('#home')); fill($('#away'));
-  if(teams.length>=2){ $('#home').value = teams[0]; $('#away').value = teams[1]; }
-  updateCrestsFromSelects();   // <- aquí sí, al final de cargar equipos
+  const lg = $('#leagueSelect')?.value;
+  const selHome = $('#home'), selAway = $('#away');
+  const fill=(el,items)=>{ el.innerHTML=''; const o0=document.createElement('option');o0.value='';o0.text='— Selecciona —'; el.appendChild(o0);
+                           items.forEach(x=>{ const o=document.createElement('option'); o.value=o.text=x; el.appendChild(o); }); };
+
+  if(!lg){ fill(selHome,[]); fill(selAway,[]); updateCrestsFromSelects(); return; }
+
+  // 1) intenta dataset local
+  try{
+    const t=await api('/teams?league='+encodeURIComponent(lg));
+    const teams=(t.teams||[]).sort((a,b)=>a.localeCompare(b));
+    if(teams.length){
+      fill(selHome,teams); fill(selAway,teams);
+      if(teams.length>=2){ selHome.value=teams[0]; selAway.value=teams[1]; }
+      updateCrestsFromSelects();
+      $('#hint').textContent='✅ Equipos desde dataset local.';
+      return;
+    }
+  }catch{}
+
+  // 2) fallback: ApiSports (usando selección de la derecha)
+  const rightId = $('#countrySelect')?.value;
+  if(!rightId){
+    fill(selHome,[]); fill(selAway,[]);
+    $('#hint').textContent='ℹ️ Liga no está en el dataset. Selecciona una liga a la derecha para cargar equipos por API.';
+    updateCrestsFromSelects();
+    return;
+  }
+  try{
+    const r=await fetch(`/providers/teams?league_id=${rightId}`);
+    const j=await r.json();
+    const teams=(j.teams||[]).map(x=>x.name).sort((a,b)=>a.localeCompare(b));
+    fill(selHome,teams); fill(selAway,teams);
+    if(teams.length>=2){ selHome.value=teams[0]; selAway.value=teams[1]; }
+    updateCrestsFromSelects();
+    $('#hint').textContent='🧪 Equipos cargados desde ApiSports.';
+  }catch{
+    fill(selHome,[]); fill(selAway,[]);
+    $('#hint').textContent='⚠️ No se pudieron cargar equipos para esta liga.';
+    updateCrestsFromSelects();
+  }
 }
 
 /* ===== Predecir ===== */
 async function doPredict(){
-  const home = $('#home').value, away = $('#away').value;
+  const home=$('#home').value, away=$('#away').value;
   if(!home || !away || home===away){ alert('Elige dos equipos distintos'); return; }
   const r = await api(`/predict?home=${encodeURIComponent(home)}&away=${encodeURIComponent(away)}`);
-
-  // KPIs principales
-  $('#p_home').textContent = fmt(r.p_home);
-  $('#p_draw').textContent = fmt(r.p_draw);
-  $('#p_away').textContent = fmt(r.p_away);
-
-  // Resumen chips
-  $('#xgh').textContent = (r.exp_goals_home ?? '—');
-  $('#xga').textContent = (r.exp_goals_away ?? '—');
-  $('#xgt').textContent = (r.exp_goals_total ?? '—');
-  $('#over').textContent = fmt(r.ou_over25);
-  $('#under').textContent = fmt(r.ou_under25);
-  $('#bttsYes').textContent = fmt(r.btts_yes);
-  $('#bttsNo').textContent  = fmt(r.btts_no);
-  $('#src1x2').textContent = r.src_1x2; $('#srcou').textContent = r.src_ou25; $('#srcbtts').textContent = r.src_btts;
-
-  // Más chips
-  $('#cornh').textContent = r.exp_corners_home ?? '—';
-  $('#corna').textContent = r.exp_corners_away ?? '—';
-  $('#cort').textContent  = r.exp_corners_total ?? '—';
-  $('#corOver').textContent = fmt(r.corners_over95);
-  $('#corUnder').textContent = fmt(r.corners_under95);
-  $('#yelh').textContent = r.exp_yellows_home ?? '—';
-  $('#yela').textContent = r.exp_yellows_away ?? '—';
-  $('#yelt').textContent = r.exp_yellows_total ?? '—';
-  $('#yelOver').textContent = fmt(r.yellows_over45);
-  $('#yelUnder').textContent = fmt(r.yellows_under45);
-  $('#redh').textContent = r.exp_reds_home ?? '—';
-  $('#reda').textContent = r.exp_reds_away ?? '—';
-  $('#redt').textContent = r.exp_reds_total ?? '—';
-  $('#g0').textContent = fmt(r.p_goals_0);
-  $('#g1').textContent = fmt(r.p_goals_1);
-  $('#g2').textContent = fmt(r.p_goals_2);
-  $('#g3p').textContent = fmt(r.p_goals_3plus);
-
-  // Gráfico + sidebar + escudos
+  $('#p_home').textContent=fmt(r.p_home); $('#p_draw').textContent=fmt(r.p_draw); $('#p_away').textContent=fmt(r.p_away);
+  $('#xgh').textContent=r.exp_goals_home ?? '—'; $('#xga').textContent=r.exp_goals_away ?? '—'; $('#xgt').textContent=r.exp_goals_total ?? '—';
+  $('#over').textContent=fmt(r.ou_over25); $('#under').textContent=fmt(r.ou_under25);
+  $('#bttsYes').textContent=fmt(r.btts_yes); $('#bttsNo').textContent=fmt(r.btts_no);
+  $('#src1x2').textContent=r.src_1x2; $('#srcou').textContent=r.src_ou25; $('#srcbtts').textContent=r.src_btts;
+  $('#cornh').textContent=r.exp_corners_home ?? '—'; $('#corna').textContent=r.exp_corners_away ?? '—'; $('#cort').textContent=r.exp_corners_total ?? '—';
+  $('#corOver').textContent=fmt(r.corners_over95); $('#corUnder').textContent=fmt(r.corners_under95);
+  $('#yelh').textContent=r.exp_yellows_home ?? '—'; $('#yela').textContent=r.exp_yellows_away ?? '—'; $('#yelt').textContent=r.exp_yellows_total ?? '—';
+  $('#yelOver').textContent=fmt(r.yellows_over45); $('#yelUnder').textContent=fmt(r.yellows_under45);
+  $('#redh').textContent=r.exp_reds_home ?? '—'; $('#reda').textContent=r.exp_reds_away ?? '—'; $('#redt').textContent=r.exp_reds_total ?? '—';
+  $('#g0').textContent=fmt(r.p_goals_0); $('#g1').textContent=fmt(r.p_goals_1); $('#g2').textContent=fmt(r.p_goals_2); $('#g3p').textContent=fmt(r.p_goals_3plus);
   renderChart(r.p_home, r.p_draw, r.p_away);
   renderSidebarMetrics(r);
   setCrests(home, away);
 }
 
-/* ===== Recargar datos ===== */
+/* ===== Cargar/recargar ligas (dataset) ===== */
 async function reloadLeagues(){
-  const btn = $('#reload'); btn.disabled = true; btn.textContent = 'Cargando…';
+  const btn=$('#reload'); btn.disabled=true; btn.textContent='Cargando…';
   try{
-    const body = { leagues: DEFAULT_LEAGUES, last_n: 5 };
-    const r = await fetch('/reload_multi',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
-    const j = await r.json();
-    const years = (typeof j.years === 'string') ? j.years : (Array.isArray(j.years) ? j.years.join(', ') : '—');
-    const lg = body.leagues.map(c=>LEAGUE_NAMES[c]||c).join(', ');
-    $('#hint').textContent = `✅ Recargado: ${j.rows ?? '?'} partidos · Ligas: ${lg} · Años: ${years}`;
-    await init();
-  }catch(err){ alert('No se pudo recargar datos. Revisa el servidor.'); }
-  btn.disabled = false; btn.textContent = '🔄 Cargar ligas';
+    const body={ leagues: DEFAULT_LEAGUES, last_n: 5 };
+    const r=await fetch('/reload_multi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json();
+    const years=(typeof j.years==='string')? j.years : (Array.isArray(j.years)? j.years.join(', ') : '—');
+    const lg=body.leagues.map(c=>LEAGUE_NAMES[c]||c).join(', ');
+    $('#hint').textContent=`✅ Recargado: ${j.rows ?? '?'} partidos · Ligas: ${lg} · Años: ${years}`;
+    await loadPredictionLeagues();
+  }catch{ alert('No se pudo recargar datos. Revisa el servidor.'); }
+  btn.disabled=false; btn.textContent='🔄 Cargar ligas';
 }
 
-/* ===== Últimos partidos ===== */
-async function loadRecent(){
+/* ===== Próximos 10 (sección derecha) ===== */
+async function loadNext(){
+  const sel = $('#countrySelect'); const list=$('#fixturesList');
+  if(!sel || !list){ return; }
+  const leagueId = sel.value;
+  list.innerHTML='<li>Cargando…</li>';
   try{
-    const data = await api("/recent?limit=10");
-    const body = document.getElementById("recentBody");
-    const hint = document.getElementById("recentHint");
-    body.innerHTML = "";
-    if(!data.matches || data.matches.length === 0){ hint.innerText = "No hay partidos recientes."; return; }
-    hint.style.display = "none";
-    data.matches.forEach(m=>{
-      const tr = document.createElement("tr");
-      const score = (m.FTHG == null || m.FTAG == null) ? "—" : `${m.FTHG} - ${m.FTAG}`;
-      let cls = "draw";
-      if (m.FTHG != null && m.FTAG != null){
-        if (m.FTHG > m.FTAG) cls = "win"; else if (m.FTHG < m.FTAG) cls = "loss";
-      }
-      tr.innerHTML = `
-        <td style="padding:8px">${m.Date || "—"}</td>
-        <td style="padding:8px">${LEAGUE_NAMES[m.League] || m.League || "—"}</td>
-        <td style="padding:8px" class="${cls}">${m.HomeTeam || "—"}</td>
-        <td style="padding:8px" class="score">${score}</td>
-        <td style="padding:8px" class="${cls === "win" ? "loss" : (cls === "loss" ? "win" : "draw")}">${m.AwayTeam || "—"}</td>
-      `;
-      body.appendChild(tr);
+    const j = await api(`/fixtures/by-league?league_id=${encodeURIComponent(leagueId)}&next=10`);
+    list.innerHTML='';
+    (j.fixtures||[]).sort((a,b)=>new Date(a.date_utc)-new Date(b.date_utc)).forEach(f=>{
+      const li=document.createElement('li');
+      const dt=new Date(f.date_utc).toLocaleString('es-CL',{dateStyle:'short',timeStyle:'short'});
+      li.textContent=`${dt} – ${f.home?.name||'—'} vs ${f.away?.name||'—'} (${f.status||'pendiente'})`;
+      list.appendChild(li);
     });
-  }catch(err){ document.getElementById("recentHint").innerText = "Error al cargar."; }
+    if(!j.fixtures?.length) list.innerHTML='<li>No hay partidos próximos.</li>';
+  }catch{ list.innerHTML='<li>Error al cargar</li>'; }
 }
 
 /* ===== Eventos ===== */
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', async ()=>{
   await init();
   await loadRecent();
-  $('#league').addEventListener('change', async () => { await loadTeams(); });
-  $('#home').addEventListener('change', updateCrestsFromSelects);
-  $('#away').addEventListener('change', updateCrestsFromSelects);
-  $('#reload').addEventListener('click', reloadLeagues);
-  $('#predict').addEventListener('click', doPredict);
-});
-
-// --- Sync: cuando eliges una liga a la izquierda, carga próximos partidos a la derecha ---
-const MAP_INTERNAL_TO_APISPORTS = {
-  // SI TU DATASET ya tiene estas ligas a la izquierda, agrega sus mapeos aquí.
-  // Ejemplos (ajusta cuando quieras):
-  // 'SP1': '140',   // LaLiga (ApiSports=140)
-  // 'E0':  '39',    // Premier League
-  // Nuevas ligas (aún no están en tu dataset de la izquierda, pero sirven para la derecha):
-  '__TR_SUPERLIG__': '203',
-  '__JP_J1__':       '98',
-  '__GR_SUPER__':    '197',
-  '__CN_SUPER__':    '169',
-  '__UA_PREM__':     '333',
-};
-
-// al cambiar la liga izquierda, intenta abrir próximos partidos si tenemos mapeo
-document.getElementById('league')?.addEventListener('change', async (e) => {
-  const code = e.target.value;
-  const apiId = MAP_INTERNAL_TO_APISPORTS[code];
-  // si hay mapeo directo, pedimos fixtures; si no, no hacemos nada
-  if (apiId) {
-    try {
-      // usa el módulo derecho simple (lista)
-      const list  = document.getElementById('fixturesList');
-      const sel   = document.getElementById('countrySelect');
-      if (sel) sel.value = apiId; // sincroniza el select derecho si existe
-      if (list) {
-        list.innerHTML = '<li>Cargando…</li>';
-        const r = await fetch(`/fixtures/by-league?league_id=${apiId}&next=10`);
-        const j = await r.json();
-        list.innerHTML = '';
-        (j.fixtures||[]).sort((a,b)=>new Date(a.date_utc)-new Date(b.date_utc))
-          .forEach(f=>{
-            const li=document.createElement('li');
-            const dt=new Date(f.date_utc).toLocaleString('es-CL',{dateStyle:'short',timeStyle:'short'});
-            li.textContent = `${dt} – ${f.home?.name||'—'} vs ${f.away?.name||'—'} (${f.status||'pendiente'})`;
-            list.appendChild(li);
-          });
-        if(!j.fixtures?.length) list.innerHTML = '<li>No hay partidos próximos.</li>';
-      }
-    } catch {}
-  }
-});
-
-</script>
-<script type="module">
-  const sel   = document.getElementById('countrySelect');
-  const btn   = document.getElementById('btnFixtures');
-  const list  = document.getElementById('fixturesList');
-
-  const callApi = (p, opt) => fetch(p, opt).then(r => { if(!r.ok) throw new Error(r.status); return r.json(); });
-
-async function loadTeams(){
-  const lg = $('#league').value;
-  const selHome = $('#home'), selAway = $('#away');
-
-  // 1) intenta con dataset local (como siempre)
-  if (lg) {
-    try {
-      const t = await api('/teams?league='+encodeURIComponent(lg));
-      const teams = t.teams || [];
-      const fill = (el) => { el.innerHTML=''; teams.forEach(x=>{ const o=document.createElement('option'); o.value=o.text=x; el.appendChild(o); }); };
-      if (teams.length) {
-        fill(selHome); fill(selAway);
-        if(teams.length>=2){ selHome.value = teams[0]; selAway.value = teams[1]; }
-        updateCrestsFromSelects();
-        return; // ✅ listo con dataset
-      }
-    } catch {}
-  }
-
-  // 2) fallback: si no hay equipos en dataset, intentamos vía ApiSports
-  // detecta si la derecha tiene una liga seleccionada con ID ApiSports
-  const apiId = document.getElementById('countrySelect')?.value;
-  if (!apiId) {
-    // como alternativa, mapeamos código interno->apisports si existe
-    const apiIdMap = MAP_INTERNAL_TO_APISPORTS[lg];
-    if (!apiIdMap) {
-      selHome.innerHTML = ''; selAway.innerHTML = '';
-      updateCrestsFromSelects();
-      $('#hint').textContent = 'ℹ️ Esta liga aún no está en el dataset. Podemos traer los equipos vía API, o integrar la liga al dataset para predecir.';
-      return;
-    }
-  }
-  const leagueApiId = apiId || MAP_INTERNAL_TO_APISPORTS[lg];
-
-  try {
-    const r = await fetch(`/providers/teams?league_id=${leagueApiId}`);
-    const j = await r.json();
-    const teamsApi = (j.teams || []).map(x=>x.name);
-    const fill = (el) => { el.innerHTML=''; teamsApi.forEach(x=>{ const o=document.createElement('option'); o.value=o.text=x; el.appendChild(o); }); };
-    fill(selHome); fill(selAway);
-    if(teamsApi.length>=2){ selHome.value = teamsApi[0]; selAway.value = teamsApi[1]; }
-    updateCrestsFromSelects();
-
-    $('#hint').textContent = '🧪 Equipos cargados desde ApiSports. (Para predecir bien, necesitamos integrar esta liga a tu dataset.)';
-  } catch(e) {
-    selHome.innerHTML = ''; selAway.innerHTML = '';
-    updateCrestsFromSelects();
-    $('#hint').textContent = '⚠️ No se pudieron cargar equipos para esta liga.';
-  }
-}
-
-  btn?.addEventListener('click', loadNext);
-  // carga inicial
+  await loadPredictionLeagues();
+  $('#leagueSelect')?.addEventListener('change', loadTeams);
+  $('#home')?.addEventListener('change', updateCrestsFromSelects);
+  $('#away')?.addEventListener('change', updateCrestsFromSelects);
+  $('#reload')?.addEventListener('click', reloadLeagues);
+  $('#predict')?.addEventListener('click', doPredict);
+  $('#btnFixtures')?.addEventListener('click', loadNext);
+  // carga inicial de fixtures (derecha)
   loadNext();
+});
 </script>
+
+<!-- Fuente de emoji para banderitas -->
+<style>
+  select, option { font-family: system-ui, "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif; }
+</style>
 </body>
 </html>

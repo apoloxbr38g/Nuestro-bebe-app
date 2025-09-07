@@ -1,125 +1,135 @@
-# backend/ingest/ingest_apisports.py
-import asyncio, os
-from pathlib import Path
-import pandas as pd
+# backend/providers/apisports.py
+from __future__ import annotations
+import os
+from datetime import datetime, timedelta, timezone
+import httpx
 
-# usamos el mismo cliente que ya funciona en tu backend
-from backend.providers import apisports
-from dotenv import load_dotenv
+# Lee tu key del .env
+API_KEY = os.getenv("APISPORTS_KEY")  # asegúrate de tenerla en backend/.env
+BASE    = os.getenv("APISPORTS_BASE", "https://v3.football.api-sports.io")
 
-load_dotenv()  # toma APISPORTS_KEY de backend/.env
+HEADERS = {
+    # API-SPORTS acepta este header (nuevo); si tu key es de RapidAPI, cambia por x-rapidapi-key + host
+    "x-apisports-key": API_KEY or "",
+}
 
-def _row_from_fixture(item):
-    f = item.get("fixture", {}) or {}
-    l = item.get("league", {}) or {}
-    t = item.get("teams", {})  or {}
-    g = item.get("goals", {})  or {}
+async def _get(path: str, params: dict) -> dict:
+    """GET genérico a API-SPORTS; devuelve el JSON completo."""
+    url = f"{BASE}{path}"
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.get(url, headers=HEADERS, params=params)
+        r.raise_for_status()
+        return r.json()
 
-    return {
-        "Date": (f.get("date") or "")[:10],
-        "Div":  str(l.get("id") or ""),         # luego lo mapeamos a código interno (ej. UA1)
-        "League": l.get("name"),
-        "Season": l.get("season"),
-        "HomeTeam": (t.get("home") or {}).get("name"),
-        "AwayTeam": (t.get("away") or {}).get("name"),
-        "FTHG": g.get("home"),
-        "FTAG": g.get("away"),
-        "Status": (f.get("status") or {}).get("short"),
-    }
+def _response_list(js: dict) -> list:
+    """Extrae la lista estandarizada `response`."""
+    if not isinstance(js, dict):
+        return []
+    return js.get("response", []) or []
 
-async def _fetch_all_for_season(league_id: int, season: int):
-    page = 1
-    out  = []
-    while True:
-        data = await apisports._get("/fixtures", {"league": league_id, "season": season, "page": page})
-        # Log de errores informativos (la API devuelve 200 con "errors" a veces)
-        if data.get("errors"):
-            print(f"[API ERR] season {season} page {page} →", data["errors"])
-        resp = data.get("response", [])
-        out.extend([_row_from_fixture(x) for x in resp])
+# ---------------- Endpoints de conveniencia ----------------
 
-        # paginación
-        paging = data.get("paging", {}) or {}
-        total_pages = int(paging.get("total", 1) or 1)
-        if page >= total_pages:
-            break
-        page += 1
+async def leagues_by_country(country: str) -> list[dict]:
+    """
+    Devuelve ligas por país (nombre/ID/temporadas).
+    """
+    js = await _get("/leagues", {"country": country})
+    resp = _response_list(js)
+    out = []
+    for item in resp:
+        lg = item.get("league") or {}
+        seasons = item.get("seasons") or []
+        last_season = None
+        if seasons:
+            # toma la temporada más reciente por year
+            last_season = max((s.get("year") for s in seasons if "year" in s), default=None)
+        out.append({
+            "id": str(lg.get("id")) if lg.get("id") is not None else None,
+            "name": lg.get("name"),
+            "type": lg.get("type"),
+            "country": (item.get("country") or {}).get("name"),
+            "season": last_season,
+            "raw": item,
+        })
     return out
 
-async def ingest_league(league_id: int, seasons: list[int], out_csv: Path, code_internal: str):
-    rows = []
-    for y in seasons:
-        print(f"Descargando league={league_id} season={y} ...")
-        part = await _fetch_all_for_season(league_id, y)
-        rows.extend(part)
-
-    df = pd.DataFrame(rows)
-    # mapea Div numérico → código interno (ej. "UA1")
-    if not df.empty:
-        df["Div"] = code_internal
-        # columnas básicas ordenadas
-        base_cols = ["Date","Div","HomeTeam","AwayTeam","FTHG","FTAG"]
-        extras = [c for c in df.columns if c not in base_cols]
-        df = df[base_cols + extras]
-    out_csv.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(out_csv, index=False)
-    print(f"Guardado {out_csv} con {len(df)} partidos")
-    return out_csv
-
-if __name__ == "__main__":
-    # ⚠️ Edita aquí lo que quieras ingestar:
-    TARGETS = [
-        # (league_id, seasons, output_csv_path, internal_code)
-        (333, [2022, 2023, 2024, 2025], Path("backend/data/raw/UA/UA1_2022-2025.csv"), "UA1"),  # Ucrania
-        # (203, [2022, 2023, 2024, 2025], Path("backend/data/raw/TR/TR1_2022-2025.csv"), "TR1"),  # Turquía
-        # (98,  [2022, 2023, 2024, 2025], Path("backend/data/raw/JP/JP1_2022-2025.csv"), "JP1"),  # Japón
-        # (197, [2022, 2023, 2024, 2025], Path("backend/data/raw/GR/GR1_2022-2025.csv"), "GR1"),  # Grecia
-        # (169, [2022, 2023, 2024, 2025], Path("backend/data/raw/CN/CN1_2022-2025.csv"), "CN1"),  # China
-    ]
-
-    async def main():
-        outs = []
-        for league_id, years, out_csv, code in TARGETS:
-            f = await ingest_league(league_id, years, out_csv, code)
-            outs.append(str(f))
-        print("CSV generados:", outs)
-
-    asyncio.run(main())
-# dentro de backend/providers/apisports.py
-import datetime as _dt
-
-async def fixtures_by_league(league_id: str, season: int | None = None, date: str | None = None, next: int | None = None, days: int = 30):
-    # 1) intento con next
-    if next:
-        data = await _get("/fixtures", {"league": league_id, "next": int(next), "timezone": "UTC"})
-        fx = _normalize_fixtures_list(data)
-        if fx:
-            return fx
-
-    # 2) rango por temporada actual
-    if not season:
-        data_league = await _get("/leagues", {"id": league_id})
-        season = None
-        for it in data_league.get("response", []):
-            for s in it.get("seasons", []):
-                if s.get("current"): season = int(s.get("year")); break
-
-    today = _dt.date.today()
-    if days and season:
-        data = await _get("/fixtures", {
-            "league": league_id,
-            "season": int(season),
-            "from": today.isoformat(),
-            "to":   (today + _dt.timedelta(days=int(days))).isoformat(),
-            "timezone": "UTC",
+async def teams_by_league(league_id: str, season: int | None = None) -> list[dict]:
+    """
+    Lista de equipos de una liga (opcionalmente temporada); si no se da temporada,
+    intenta usar el año actual.
+    """
+    if season is None:
+        season = datetime.now(timezone.utc).year
+    js = await _get("/teams", {"league": league_id, "season": season})
+    resp = _response_list(js)
+    out = []
+    for item in resp:
+        team = item.get("team") or {}
+        out.append({
+            "id": team.get("id"),
+            "name": team.get("name"),
+            "code": team.get("code"),
+            "country": (item.get("venue") or {}).get("country"),
         })
-        fx = _normalize_fixtures_list(data)
-        if fx:
-            return fx
+    return out
 
-    # 3) hoy
-    if not date:
-        date = today.isoformat()
-    data = await _get("/fixtures", {"league": league_id, "season": season, "date": date, "timezone": "UTC"})
-    return _normalize_fixtures_list(data)
+async def fixtures_by_league(
+    league_id: str,
+    season: int | None = None,
+    date: str | None = None,   # 'YYYY-MM-DD'
+    next: int | None = None,   # próximos N
+    days: int = 30,            # ventana si no hay date/next
+) -> list[dict]:
+    """
+    Futuros/diarios por liga. Preferencias:
+    - si pasas `date`, usa ese día
+    - si pasas `next`, usa próximos N
+    - si nada de lo anterior, usa rango [hoy, hoy+N días]
+    """
+    params = {"league": league_id, "timezone": "UTC"}
+    if season is not None:
+        params["season"] = season
 
+    if date:
+        params["date"] = date
+    elif next is not None:
+        params["next"] = int(next)
+    else:
+        today = datetime.now(timezone.utc).date()
+        to   = today + timedelta(days=max(1, int(days)))
+        params["from"] = today.isoformat()
+        params["to"]   = to.isoformat()
+
+    js = await _get("/fixtures", params)
+    resp = _response_list(js)
+
+    out = []
+    for f in resp:
+        fixture = f.get("fixture") or {}
+        league  = f.get("league") or {}
+        teams   = f.get("teams") or {}
+        goals   = f.get("goals") or {}
+
+        out.append({
+            "id": fixture.get("id"),
+            "league": {
+                "id": league.get("id"),
+                "name": league.get("name"),
+                "season": league.get("season"),
+            },
+            "date_utc": fixture.get("date"),  # ISO UTC
+            "status": (fixture.get("status") or {}).get("short"),
+            "home": {
+                "id": (teams.get("home") or {}).get("id"),
+                "name": (teams.get("home") or {}).get("name"),
+            },
+            "away": {
+                "id": (teams.get("away") or {}).get("id"),
+                "name": (teams.get("away") or {}).get("name"),
+            },
+            "goals": {
+                "home": goals.get("home"),
+                "away": goals.get("away"),
+            }
+        })
+    return out

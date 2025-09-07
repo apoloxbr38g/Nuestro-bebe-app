@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi import FastAPI, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import HTTPException
 from pydantic import BaseModel
 
 import os
@@ -16,8 +17,17 @@ import numpy as np
 import joblib
 from dotenv import load_dotenv
 
+import httpx
+from datetime import date, timedelta
+
 # ==== Carga de .env (claves API) ====
 load_dotenv()  # APISPORTS_KEY, APIFOOTBALL_KEY en backend/.env
+
+APISPORTS_KEY    = os.getenv("APISPORTS_KEY")
+APIFOOTBALL_KEY  = os.getenv("APIFOOTBALL_API_KEY")
+
+APISPORTS_BASE   = os.getenv("APISPORTS_BASE", "https://v3.football.api-sports.io")
+APIFOOTBALL_BASE = os.getenv("APIFOOTBALL_BASE", "https://apiv3.apifootball.com/")
 
 # ==== Importar proveedor ApiSports (nuestro cliente HTTPX) ====
 from backend.providers import apisports  # asegurarse que exista backend/providers/apisports.py
@@ -29,6 +39,8 @@ from backend.train import MODEL_PATH
 from backend.train_ou import MODEL_OU_PATH
 from backend.train_btts import MODEL_BTTS_PATH
 from backend.models.features import build_training_table
+from backend.utils.data_loader import load_league_history
+
 
 # ---------- App & CORS ----------
 app = FastAPI(
@@ -43,6 +55,30 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# --- Configuración de ligas soportadas y temporadas ---
+DEFAULT_SEASONS: List[str] = ["2526", "2425", "2324", "2223", "2122"]
+
+SUPPORTED_LEAGUES = {
+    "SP1": "LaLiga (Primera)",
+    "SP2": "LaLiga (Segunda)",
+    "E0":  "Premier League",
+    "E1":  "Championship",
+    "D1":  "Bundesliga",
+    "D2":  "2. Bundesliga",
+    "I1":  "Serie A",
+    "I2":  "Serie B",
+    "F1":  "Ligue 1",
+    "F2":  "Ligue 2",
+    "N1":  "Eredivisie",
+    "P1":  "Primeira Liga",
+    "SC0": "Scottish Premiership",
+    "B1":  "Belgian First Division A",
+    # 💜 NUEVAS
+    "T1":  "Superliga Turquía",
+    "J1":  "J1 League (Japón)",
+    "G1":  "Superliga Grecia",
+    "UKR": "Liga Premier Ucrania",
+}
 
 # ---------- Cache global ----------
 df_global: Optional[pd.DataFrame] = None
@@ -279,6 +315,47 @@ async def fixtures_by_league(
         league_id, season=season, date=date, next_=next, last_=last
     )
     return {"count": len(fixtures), "fixtures": fixtures}
+
+@app.get("/fixtures/global_next5")
+async def fixtures_global_next5(tz: str = "America/Santiago", days: int = 14):
+    """
+    Próximos 5 partidos globales desde hoy hasta hoy+days.
+    Incluye selecciones, amistosos y Sub-20 (no filtramos por liga).
+    """
+    if not APIFOOTBALL_KEY:
+        raise HTTPException(status_code=500, detail="Falta APIFOOTBALL_API_KEY")
+
+    start = date.today()
+    end   = start + timedelta(days=max(1, min(days, 30)))  # seguridad
+
+    params = {
+        "APIkey": APIFOOTBALL_KEY,
+        "action": "get_events",
+        "from": start.isoformat(),
+        "to":   end.isoformat(),
+        "timezone": tz,
+    }
+
+    async with httpx.AsyncClient(timeout=40.0) as cx:
+        r = await cx.get(APIFOOTBALL_BASE, params=params)
+        r.raise_for_status()
+        data = r.json()
+
+    if not isinstance(data, list):
+        return {"count": 0, "fixtures": []}
+
+    items = []
+    for it in data:
+        items.append({
+            "datetime": f"{it.get('match_date','')} {it.get('match_time','')}".strip(),
+            "league":   it.get("league_name") or "",
+            "home":     it.get("match_hometeam_name") or "",
+            "away":     it.get("match_awayteam_name") or "",
+            "status":   it.get("match_status") or "",
+        })
+
+    items.sort(key=lambda x: x["datetime"])
+    return {"count": min(5, len(items)), "fixtures": items[:5]}
 
 @app.get("/providers/teams")
 async def providers_teams(
@@ -903,3 +980,73 @@ def warmup():
     _ensure_data_loaded()
     _ensure_features()
     return {"status": "ok", "features_ready": Xy_global is not None}
+
+# =================== ENTRENAMIENTO MULTI-TEMPORADA (nuevo) ===================
+
+class TrainHistoryRequest(BaseModel):
+    league: str
+    seasons: Optional[List[str]] = None  # si no mandan, usamos DEFAULT_SEASONS
+
+@app.post("/train_history")
+def train_with_history(body: TrainHistoryRequest):
+    """Re-entrena Poisson (y features) con 5 temporadas (o las que mandes)."""
+    league = body.league.upper()
+    if league not in SUPPORTED_LEAGUES:
+        raise HTTPException(status_code=400, detail=f"Liga no soportada: {league}")
+
+    seasons = body.seasons or DEFAULT_SEASONS
+
+    try:
+        df = load_league_history(league, seasons)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    # Reutiliza tu pipeline existente:
+    global df_global, Xy_global, current_csv_path, model
+    df_global = df.copy()
+    current_csv_path = None  # multi-temporada, no hay un único CSV
+    model.fit(df_global)
+
+    try:
+        Xy_global = build_training_table(df_global, window=10)
+    except Exception as e:
+        Xy_global = None
+        print("[WARN] build_training_table falló:", e)
+
+    return {
+        "message": "Modelo re-entrenado (multi-temporada)",
+        "league": league,
+        "league_name": SUPPORTED_LEAGUES[league],
+        "seasons": seasons,
+        "rows": int(df_global.shape[0]),
+        "from": (str(df_global["Date"].min()) if "Date" in df_global else None),
+        "to": (str(df_global["Date"].max()) if "Date" in df_global else None),
+    }
+
+@app.get("/data/status")
+def data_status():
+    """Estado simple de los datos cargados para depurar."""
+    if df_global is None:
+        return {"loaded": False}
+    out = {"loaded": True, "rows": int(df_global.shape[0])}
+    if "Date" in df_global:
+        out["from"] = str(df_global["Date"].min())
+        out["to"] = str(df_global["Date"].max())
+    return out
+
+@app.get("/leagues/supported")
+def leagues_supported():
+    """Lista códigos soportados + si ya hay CSVs en data/raw/<code>."""
+    base = Path(__file__).parent / "data" / "raw"
+    out = []
+    for code, name in SUPPORTED_LEAGUES.items():
+        liga_dir = base / code
+        has_data = liga_dir.exists() and any(liga_dir.glob("*.csv"))
+        seasons = sorted([p.stem for p in liga_dir.glob("*.csv")]) if liga_dir.exists() else []
+        out.append({
+            "code": code,
+            "name": name,
+            "has_data": has_data,
+            "seasons": seasons
+        })
+    return {"leagues": out}
