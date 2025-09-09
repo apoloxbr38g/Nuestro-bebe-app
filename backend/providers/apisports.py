@@ -27,6 +27,10 @@ def _response_list(js: dict) -> list:
         return []
     return js.get("response", []) or []
 
+async def countries_list() -> list[dict]:
+    js = await _get("/countries", {})
+    return _response_list(js)
+
 # ---------------- Endpoints de conveniencia ----------------
 
 async def leagues_by_country(country: str) -> list[dict]:
@@ -133,3 +137,153 @@ async def fixtures_by_league(
             }
         })
     return out
+# ---------------- Selecciones nacionales ----------------
+
+async def teams_national() -> list[dict]:
+    """
+    Devuelve todas las selecciones nacionales (API-Sports type=National).
+    """
+    js = await _get("/teams", {"type": "National"})
+    resp = _response_list(js)
+    out = []
+    for item in resp:
+        t = item.get("team") or {}
+        c = item.get("country") or {}
+        if not t:
+            continue
+        out.append({
+            "id": t.get("id"),
+            "name": t.get("name"),
+            "code": t.get("code") or c.get("code"),
+            "flag": t.get("logo") or c.get("flag"),
+        })
+    # Ordenar alfabéticamente
+    out.sort(key=lambda x: (x["name"] or "").lower())
+    return out
+
+
+async def fixtures_national(team_id: int, last: int = 10) -> list[dict]:
+    """
+    Últimos partidos de una selección (para calcular tasas de gol).
+    """
+    js = await _get("/fixtures", {"team": team_id, "last": last})
+    return _response_list(js)
+
+async def teams_national_by_country(country: str) -> list[dict]:
+    """
+    Busca selecciones por nombre exacto de país (Chile, Argentina, Brazil, etc.).
+    """
+    js = await _get("/teams", {"type": "National", "country": country})
+    resp = _response_list(js)
+    out = []
+    for item in resp:
+        t = item.get("team") or {}
+        c = item.get("country") or {}
+        out.append({
+            "id": t.get("id"),
+            "name": t.get("name"),
+            "code": t.get("code") or (c.get("code") if c else None),
+            "flag": t.get("logo") or (c.get("flag") if c else None),
+            "country": country,
+        })
+    out.sort(key=lambda x: (x["name"] or "").lower())
+    return out
+
+async def teams_search_any(q: str) -> list[dict]:
+    """
+    Busca equipos con search=q (sin 'type'), y filtra solo selecciones (team.national==True).
+    """
+    js = await _get("/teams", {"search": q})
+    resp = _response_list(js)
+    out = []
+    for item in resp:
+        t = item.get("team") or {}
+        c = item.get("country") or {}
+        if not t or not t.get("national", False):
+            continue
+        out.append({
+            "id": t.get("id"),
+            "name": t.get("name"),
+            "code": t.get("code") or (c.get("code") if c else None),
+            "flag": t.get("logo") or (c.get("flag") if c else None),
+        })
+    out.sort(key=lambda x: (x["name"] or "").lower())
+    return out
+
+async def teams_by_country_any(country: str) -> list[dict]:
+    """
+    Lista equipos por país (sin 'type') y filtra selecciones.
+    """
+    js = await _get("/teams", {"country": country})
+    resp = _response_list(js)
+    out = []
+    for item in resp:
+        t = item.get("team") or {}
+        c = item.get("country") or {}
+        if not t or not t.get("national", False):
+            continue
+        out.append({
+            "id": t.get("id"),
+            "name": t.get("name"),
+            "code": t.get("code") or (c.get("code") if c else None),
+            "flag": t.get("logo") or (c.get("flag") if c else None),
+            "country": country,
+        })
+    out.sort(key=lambda x: (x["name"] or "").lower())
+    return out
+
+async def teams_national_search(q: str) -> list[dict]:
+    """
+    Búsqueda de selecciones nacionales por texto.
+    """
+    js = await _get("/teams", {"type": "National", "search": q})
+    resp = _response_list(js)
+    out = []
+    for item in resp:
+        t = item.get("team") or {}
+        c = item.get("country") or {}
+        out.append({
+            "id": t.get("id"),
+            "name": t.get("name"),
+            "code": t.get("code") or (c.get("code") if c else None),
+            "flag": t.get("logo") or (c.get("flag") if c else None),
+        })
+    out.sort(key=lambda x: (x["name"] or "").lower())
+    return out
+
+async def teams_national_search_smart(q: str) -> list[dict]:
+    # 1) search con type=National
+    res = await teams_national_search(q)
+    if res:
+        return res
+    # 2) country con type=National
+    res = await teams_national_by_country(q)
+    if res:
+        return res
+    # 3) search SIN type (y filtrar national)
+    res = await teams_search_any(q)
+    if res:
+        return res
+    # 4) intentar por país SIN type (y filtrar national), con normalización del nombre
+    ql = q.strip().lower()
+    # intenta match directo
+    res = await teams_by_country_any(q)
+    if res:
+        return res
+    # intenta con título
+    q_cap = q.strip().title()
+    if q_cap != q:
+        res = await teams_by_country_any(q_cap)
+        if res:
+            return res
+    # intenta fuzzy en /countries
+    try:
+        countries = await countries_list()
+        cand = [c.get("name") for c in countries if c.get("name") and ql in c.get("name","").lower()]
+        for name in cand:
+            res = await teams_by_country_any(name)
+            if res:
+                return res
+    except Exception:
+        pass
+    return []

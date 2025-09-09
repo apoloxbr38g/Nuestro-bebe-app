@@ -1,4 +1,5 @@
 # backend/app.py
+from fastapi.responses import JSONResponse 
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi import FastAPI, Query, Body
@@ -119,7 +120,7 @@ def _get_Xy():
 FEATURE_LABELS = {
     "Elo_H": "Elo Local",
     "Elo_A": "Elo Visitante",
-    "H_r_GF": "GF recientes (Local)",
+    "H_r_GF": "Gfind frontend/assets -name "__MACOSX" -type d -prune -exec rm -rf {} +F recientes (Local)",
     "H_r_GA": "GA recientes (Local)",
     "H_r_GD": "GD recientes (Local)",
     "H_r_W":  "Racha victorias (Local)",
@@ -157,6 +158,7 @@ DATA_PATH = MERGED if MERGED.exists() else LOCAL_SAMPLE
 
 FRONT_DIR = Path(__file__).parent.parent / "frontend"
 app.mount("/app", StaticFiles(directory=str(FRONT_DIR), html=True), name="frontend")
+app.mount("/assets", StaticFiles(directory=str(FRONT_DIR / "assets")), name="assets")  # 👈 nuevo
 
 # ---------- Response Model ----------
 class PredictResponse(BaseModel):
@@ -194,6 +196,13 @@ class PredictResponse(BaseModel):
     p_goals_1: float | None = None
     p_goals_2: float | None = None
     p_goals_3plus: float | None = None
+
+# === Selecciones: payload de predicción ===
+class NationalPredictIn(BaseModel):
+    home_id: int
+    away_id: int
+    neutral: bool = False
+    lookback: int = 10  # últimos N partidos para estimar tasas
 
 # ---------- Modelos en memoria ----------
 model = PoissonModel()
@@ -365,6 +374,65 @@ async def providers_teams(
     teams = await apisports.teams_by_league(league_id, season=season)
     return {"count": len(teams), "teams": teams}
 
+# ---------- Selecciones (nacionales) ----------
+@app.get("/teams/national")
+async def teams_national(q: Optional[str] = Query(None, description="Filtro: 'Chile', 'Argentina', 'Bra'…")):
+    """
+    Devuelve selecciones nacionales.
+    - Si mandas ?q=, usa búsqueda inteligente (search y country).
+    - Si no mandas q, intenta un fallback amplio con 'a'.
+    - Si la API falla, devuelve 200 con teams=[], y el error en 'error' para debug.
+    """
+    try:
+        if q and q.strip():
+            teams = await apisports.teams_national_search_smart(q.strip())
+        else:
+            teams = await apisports.teams_national_search("a")
+        return {"count": len(teams), "teams": teams}
+    except Exception as e:
+        print("[/teams/national] ERROR:", repr(e))
+        return JSONResponse(status_code=200, content={"count": 0, "teams": [], "error": str(e)})
+
+@app.post("/predict/national")
+async def predict_national(inp: NationalPredictIn):
+    """
+    Predicción Local vs Visita entre selecciones:
+    - Usa partidos recientes reales (ApiSports) para estimar λ por Poisson
+    - Devuelve probabilidades Home/Draw/Away y marcadores más probables
+    """
+    if not os.getenv("APISPORTS_KEY"):
+        raise HTTPException(status_code=500, detail="Falta APISPORTS_KEY en backend/.env")
+
+    lam_h, lam_a = await _poisson_rates_from_recent(
+        inp.home_id, inp.away_id, n=inp.lookback, neutral=inp.neutral
+    )
+
+    max_g = 6
+    def pois(lam, k): return math.exp(-lam) * (lam**k) / math.factorial(k)
+    pmf_h = np.array([pois(lam_h, k) for k in range(max_g+1)])
+    pmf_a = np.array([pois(lam_a, k) for k in range(max_g+1)])
+    mat = np.outer(pmf_h, pmf_a)
+
+    prob_home = float(np.tril(mat, -1).sum())
+    prob_draw = float(np.trace(mat))
+    prob_away = float(np.triu(mat, +1).sum())
+
+    # top marcadores
+    flat = [((h,a), float(mat[h,a])) for h in range(max_g+1) for a in range(max_g+1)]
+    flat.sort(key=lambda x: x[1], reverse=True)
+    top_scores = [{"score": f"{h}-{a}", "p": round(p, 4)} for (h,a), p in flat[:5]]
+
+    return {
+        "lambda": {"home": round(lam_h, 3), "away": round(lam_a, 3)},
+        "probabilities": {
+            "home": round(prob_home, 4),
+            "draw": round(prob_draw, 4),
+            "away": round(prob_away, 4),
+        },
+        "top_scores": top_scores,
+        "meta": {"neutral": inp.neutral, "lookback": inp.lookback},
+    }
+
 # ---------- Utils varias ----------
 def _col_ok(df, c):
     return (c in df.columns) and (df[c].notna().sum() > 0)
@@ -398,6 +466,53 @@ def _poisson_pmf(k, lam):
 def _clip01(x):
     if x is None: return None
     return max(0.0, min(1.0, float(x)))
+
+# === Selecciones: utilidades Poisson a partir de partidos recientes ===
+async def _fixtures_recent(team_id: int, n: int = 10):
+    return await apisports.fixtures_national(team_id, last=n)
+
+def _stats_from_fixtures(recent: list[dict], team_id: int):
+    """Devuelve promedios GF/GA y desgloses home/away a partir de fixtures ApiSports."""
+    gf, ga, home_gf, away_gf = [], [], [], []
+    for fx in recent:
+        fixture = fx.get("fixture") or {}
+        teams   = fx.get("teams") or {}
+        goals   = fx.get("goals") or {}
+        th = (teams.get("home") or {}).get("id")
+        ta = (teams.get("away") or {}).get("id")
+        gh = goals.get("home")
+        ga_ = goals.get("away")
+        if gh is None or ga_ is None:
+            continue
+        if th == team_id:
+            gf.append(gh); ga.append(ga_)
+            home_gf.append(gh)
+        elif ta == team_id:
+            gf.append(ga_); ga.append(gh)
+            away_gf.append(ga_)
+    import statistics as st
+    def avg(xs): return st.mean(xs) if xs else 1.1  # evita 0 total
+    return {
+        "gf": avg(gf), "ga": avg(ga),
+        "gf_home": avg(home_gf), "gf_away": avg(away_gf),
+    }
+
+async def _poisson_rates_from_recent(home_id: int, away_id: int, n: int = 10, neutral: bool = False):
+    """Estimación rápida de λ_home/λ_away desde promedios recientes + ajuste de localía."""
+    h_recent, a_recent = await _fixtures_recent(home_id, n), await _fixtures_recent(away_id, n)
+    hs, as_ = _stats_from_fixtures(h_recent, home_id), _stats_from_fixtures(a_recent, away_id)
+
+    lam_home = (hs["gf"] + as_["ga"]) / 2.0
+    lam_away = (as_["gf"] + hs["ga"]) / 2.0
+
+    if not neutral:
+        lam_home *= 1.10   # pequeño boost de localía
+        lam_away *= 0.90
+
+    # límites suaves para estabilidad numérica
+    lam_home = max(0.2, min(3.5, lam_home))
+    lam_away = max(0.2, min(3.5, lam_away))
+    return lam_home, lam_away
 
 # ---------- Endpoints de datos (UI) ----------
 class _PredictPayload(BaseModel):

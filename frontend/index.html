@@ -138,7 +138,7 @@
       <h2>Distribución de probabilidades</h2>
       <canvas id="chart" height="220"></canvas>
     </div>
-
+<!--
 <div class="card">
   <h2>🌍 Selecciones de ligas</h2>
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
@@ -153,6 +153,29 @@
   </div>
 
   <ul id="fixturesList" style="margin:0;padding-left:18px"></ul>
+-->
+<div class="card" id="duelo-naciones">
+  <h2>Duelo de Selecciones</h2>
+
+  <div class="row" style="display:flex; gap:8px; align-items:center; margin:6px 0">
+    <label style="min-width:56px">Local</label>
+    <input id="nat-home" type="text" placeholder="Ej: Chile" style="flex:1; padding:6px">
+  </div>
+
+  <div class="row" style="display:flex; gap:8px; align-items:center; margin:6px 0">
+    <label style="min-width:56px">Visita</label>
+    <input id="nat-away" type="text" placeholder="Ej: Argentina" style="flex:1; padding:6px">
+  </div>
+
+  <div class="row" style="display:flex; gap:10px; align-items:center; margin:8px 0">
+    <label><input id="nat-neutral" type="checkbox"> Campo neutral</label>
+    <button id="nat-go" class="btn">Predecir</button>
+  </div>
+
+  <div id="nat-msg" style="color:#9aa3b2; font-size:0.9rem; margin-top:4px"></div>
+  <div id="nat-result" class="result" style="margin-top:10px; font-size:0.95rem; line-height:1.35"></div>
+</div>
+
 </div>
     <!-- DERECHA: estado + métricas rápidas -->
     <div class="card">
@@ -161,7 +184,7 @@
         <div class="pill"><span>API:</span> <strong id="apiState" class="warning">comprobando…</strong></div>
         <div class="pill"><span>Equipos:</span> <strong id="apiTeams" class="muted">—</strong></div>
       </div>
-
+<!--
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div class="pill stat">⚽ xG Local: <b id="sb_xgh">—</b></div>
         <div class="pill stat">⚽ xG Visita: <b id="sb_xga">—</b></div>
@@ -188,6 +211,7 @@
         <div class="pill stat">⚽ Goles =2: <b id="sb_g2">—</b></div>
         <div class="pill stat">⚽ Goles 3+: <b id="sb_g3p">—</b></div>
       </div>
+-->
     </div>
   </section>
 
@@ -468,6 +492,7 @@ async function reloadLeagues(){
 }
 
 /* ===== Próximos 10 (sección derecha) ===== */
+/*
 async function loadNext(){
   const sel = $('#countrySelect'); const list=$('#fixturesList');
   if(!sel || !list){ return; }
@@ -485,6 +510,235 @@ async function loadNext(){
     if(!j.fixtures?.length) list.innerHTML='<li>No hay partidos próximos.</li>';
   }catch{ list.innerHTML='<li>Error al cargar</li>'; }
 }
+*/
+
+/* ===== Duelo de Selecciones (UI derecha) ===== */
+const nat$ = s => document.querySelector(s);
+const apiNat = (p, opt) => fetch(p, opt).then(r => { if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); });
+
+function natIsAdult(name){ return !/U\d+| W\b/i.test(name||''); }
+
+async function natResolveTeam(q){
+  const js = await apiNat('/teams/national?q=' + encodeURIComponent(q));
+  const list = js.teams || [];
+  const ql = (q||'').trim().toLowerCase();
+  let pick = list.find(t => natIsAdult(t.name) && (t.name||'').toLowerCase() === ql)
+         ||   list.find(t => natIsAdult(t.name) && (t.name||'').toLowerCase().startsWith(ql))
+         ||   list.find(t => natIsAdult(t.name) && (t.name||'').toLowerCase().includes(ql))
+         ||   list.find(t => natIsAdult(t.name));
+  if(!pick) throw new Error('No encontré selección para: ' + q);
+  return { id: pick.id, name: pick.name };
+}
+
+function natFmtPct(x){ return (x*100).toFixed(1) + '%'; }
+
+async function doPredictNational(){
+  const homeLogo = imgWithFallback(logoPathForNational(H.name), H.name, 20);
+  const awayLogo = imgWithFallback(logoPathForNational(A.name), A.name, 20);
+  const inpH = nat$('#nat-home');
+  const inpA = nat$('#nat-away');
+  const chkN = nat$('#nat-neutral');
+  const msg  = nat$('#nat-msg');
+  const out  = nat$('#nat-result');
+
+  if(!inpH || !inpA || !msg || !out){ return; }
+
+  out.innerHTML = '';
+  msg.textContent = 'Buscando selecciones…';
+  try{
+    const homeQ = (inpH.value||'').trim();
+    const awayQ = (inpA.value||'').trim();
+    if(!homeQ || !awayQ) throw new Error('Escribe ambos equipos (Local y Visita).');
+
+    const [H, A] = await Promise.all([natResolveTeam(homeQ), natResolveTeam(awayQ)]);
+    if(H.id === A.id) throw new Error('Local y visita no pueden ser la misma selección.');
+
+    msg.textContent = `✔ ${H.name} (id ${H.id}) vs ${A.name} (id ${A.id}) — calculando…`;
+
+    const body = JSON.stringify({ home_id: H.id, away_id: A.id, neutral: !!(chkN && chkN.checked), lookback: 10 });
+    const r = await apiNat('/predict/national', { method:'POST', headers:{'Content-Type':'application/json'}, body });
+
+    const p = r.probabilities||{}, lam = r.lambda||{}, top = r.top_scores||[];
+    out.innerHTML = `
+      <div><b>Probabilidades</b></div>
+      <div>🏠 <b>${H.name}</b>: ${natFmtPct(p.home||0)} &nbsp;|&nbsp; 🤝 Empate: ${natFmtPct(p.draw||0)} &nbsp;|&nbsp; 🚍 <b>${A.name}</b>: ${natFmtPct(p.away||0)}</div>
+      <div style="margin-top:6px"><small>λ Local: ${lam.home ?? '—'} — λ Visita: ${lam.away ?? '—'} ${(chkN&&chkN.checked)?'(neutral)':''}</small></div>
+      <div style="margin-top:8px"><b>Marcadores más probables</b><br>${top.map(t => `${t.score} (${natFmtPct(t.p||0)})`).join(' · ')}</div>
+    `;
+    msg.textContent = 'Listo 💜';
+  }catch(e){
+    msg.textContent = e?.message || 'No se pudo predecir.'; 
+    out.innerHTML = '';
+    console.error(e);
+  }
+}
+
+/* ===== Logos / Banderas ===== */
+function slugifyEs(s){
+  return (s||'')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // quita acentos
+    .replace(/[^a-z0-9]+/g,'')                       // solo letras/números
+    .trim();
+}
+
+// Excepciones de nombres → archivo (sin .png)
+const NAME_OVERRIDES = {
+  // 🌍 Selecciones
+  "argentina": "argentina",
+  "chile": "chile",
+  "brasil": "brasil",
+  "brazil": "brasil",
+  "espana": "espana",
+  "spain": "espana",
+  "alemania": "alemania",
+  "germany": "alemania",
+  "francia": "francia",
+  "france": "francia",
+  "italia": "italia",
+  "italy": "italia",
+  "portugal": "portugal",
+  "inglaterra": "inglaterra",
+  "england": "inglaterra",
+  "paises bajos": "paisesbajos",
+  "netherlands": "paisesbajos",
+  "holanda": "paisesbajos",
+  "mexico": "mexico",
+  "uruguay": "uruguay",
+  "colombia": "colombia",
+  "paraguay": "paraguay",
+  "peru": "peru",
+  "ecuador": "ecuador",
+  "venezuela": "venezuela",
+  "usa": "usa",
+  "united states": "usa",
+  "estados unidos": "usa",
+  "belgica": "belgica",
+  "belgium": "belgica",
+  "suiza": "suiza",
+  "switzerland": "suiza",
+  "croacia": "croacia",
+  "croatia": "croacia",
+  "serbia": "serbia",
+  "polonia": "polonia",
+  "poland": "polonia",
+  "dinamarca": "dinamarca",
+  "denmark": "dinamarca",
+  "suecia": "suecia",
+  "sweden": "suecia",
+  "noruega": "noruega",
+  "norway": "noruega",
+  "rusia": "rusia",
+  "russia": "rusia",
+  "ucrania": "ucrania",
+  "ukraine": "ucrania",
+  "japon": "japon",
+  "japan": "japon",
+  "coreadelsur": "coreadelsur",
+  "south korea": "coreadelsur",
+  "marruecos": "marruecos",
+  "morocco": "marruecos",
+  "costa rica": "costarica",
+
+  // ⚽ Clubes — LaLiga
+  "real madrid": "realmadrid",
+  "atletico madrid": "atlmadrid",
+  "barcelona": "barcelona",
+  "betis": "betis",
+  "sevilla": "sevilla",
+  "real sociedad": "realsociedad",
+  "valencia": "valencia",
+  "villarreal": "villarreal",
+  "celta vigo": "celta",
+  "athletic bilbao": "athletic",
+  "osasuna": "osasuna",
+
+  // ⚽ Clubes — Premier League
+  "arsenal": "arsenal",
+  "manchester city": "manchestercity",
+  "man city": "manchestercity",
+  "manchester united": "manchesterunited",
+  "man utd": "manchesterunited",
+  "chelsea": "chelsea",
+  "liverpool": "liverpool",
+  "tottenham": "tottenham",
+  "spurs": "tottenham",
+  "newcastle": "newcastle",
+  "west ham": "westham",
+  "everton": "everton",
+
+  // ⚽ Clubes — Bundesliga
+  "bayern munich": "bayernmunchen",
+  "bayern": "bayernmunchen",
+  "borussia dortmund": "borussiadortmund",
+  "bvb": "borussiadortmund",
+  "leverkusen": "bayerleverkusen",
+  "rb leipzig": "rbleipzig",
+  "monchengladbach": "bmonchengladbach",
+  "borussia monchengladbach": "bmonchengladbach",
+  "eintracht frankfurt": "eintrachtfrankfurt",
+  "stuttgart": "stuttgart",
+
+  // ⚽ Clubes — Serie A
+  "juventus": "juventus",
+  "inter": "inter",
+  "inter milan": "inter",
+  "ac milan": "milan",
+  "milan": "milan",
+  "napoli": "napoli",
+  "roma": "roma",
+  "lazio": "lazio",
+  "atalanta": "atalanta",
+  "fiorentina": "fiorentina",
+
+  // ⚽ Clubes — Ligue 1
+  "psg": "psg",
+  "paris saint germain": "psg",
+  "olympique lyon": "olympiquelyon",
+  "lyon": "olympiquelyon",
+  "olympique marseille": "olimpiquemarsella",
+  "marsella": "olimpiquemarsella",
+  "monaco": "monaco",
+  "lille": "lille",
+  "nantes": "nantes",
+};
+
+function logoPathForNational(teamName){
+  // Carpeta: assets/selecciones/*.png (en español)
+  // Intentamos override → slug directo
+  const base = '/assets/selecciones/';
+  const raw = (teamName||'').toLowerCase().trim();
+
+  // Normalización fuerte para buscar override
+  const key = raw.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const override = NAME_OVERRIDES[key];
+  const file = override ? override : slugifyEs(teamName);
+
+  return base + file + '.png';
+}
+
+function logoPathForClub(leagueFolder, teamName){
+  // leagueFolder: 'premier' | 'laliga' | 'bundesliga' | 'seriea' | 'ligue1' | ...
+  const base = `/assets/${leagueFolder}/`;
+  const key = (teamName||'').toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const override = NAME_OVERRIDES[key];
+  const file = override ? override : slugifyEs(teamName);
+  return base + file + '.png';
+}
+
+// IMG helper con fallback
+function imgWithFallback(src, alt='logo', size=24){
+  const img = document.createElement('img');
+  img.src = src;
+  img.alt = alt;
+  img.width = size;
+  img.height = size;
+  img.decoding = 'async';
+  img.style.verticalAlign = 'middle';
+  img.style.objectFit = 'contain';
+  img.onerror = () => { img.onerror = null; img.src = '/assets/logo.png'; }; // fallback global
+  return img;
+}
 
 /* ===== Eventos ===== */
 document.addEventListener('DOMContentLoaded', async ()=>{
@@ -497,9 +751,13 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   $('#reload')?.addEventListener('click', reloadLeagues);
   $('#predict')?.addEventListener('click', doPredict);
   $('#btnFixtures')?.addEventListener('click', loadNext);
+  // 👉 nuevo: botón de duelo de selecciones
+  document.querySelector('#nat-go')?.addEventListener('click', doPredictNational);
+
   // carga inicial de fixtures (derecha)
   loadNext();
 });
+
 </script>
 
 <!-- Fuente de emoji para banderitas -->
