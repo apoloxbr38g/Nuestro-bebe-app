@@ -120,7 +120,7 @@ def _get_Xy():
 FEATURE_LABELS = {
     "Elo_H": "Elo Local",
     "Elo_A": "Elo Visitante",
-    "H_r_GF": "Gfind frontend/assets -name "__MACOSX" -type d -prune -exec rm -rf {} +F recientes (Local)",
+    "H_r_GF": "F recientes (Local)",
     "H_r_GA": "GA recientes (Local)",
     "H_r_GD": "GD recientes (Local)",
     "H_r_W":  "Racha victorias (Local)",

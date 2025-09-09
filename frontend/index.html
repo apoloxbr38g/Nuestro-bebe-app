@@ -342,23 +342,73 @@ async function loadPredictionLeagues(){
   });
 }
 
-/* ===== Escudos ===== */
-const TEAM_ALIASES={
-  "Real Madrid":"real-madrid","Barcelona":"barcelona","Atlético Madrid":"atletico-madrid","Ath Bilbao":"athletic-bilbao",
-  "Celta Vigo":"celta","Nott'm Forest":"nottingham-forest","Man United":"manchester-united","Man City":"manchester-city",
+/* ===== Escudos (clubs) ===== */
+const LEAGUE_FOLDER = {
+  "SP1": "laliga",
+  "E0":  "premier",
+  "D1":  "bundesliga",
+  "I1":  "seriea",
+  "F1":  "ligue1",
 };
-function slugifyTeam(name){
-  if(!name) return "";
-  if(TEAM_ALIASES[name]) return TEAM_ALIASES[name];
-  return name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
+
+// Alias desde cómo viene el nombre (API/tu UI) → archivo real en /assets/<carpeta>/<archivo>.png
+const TEAM_OVERRIDES = {
+  // LaLiga
+  "real madrid": "realmadrid",
+  "atlético madrid": "atlmadrid",
+  "atletico madrid": "atlmadrid",
+  "ath madrid": "atlmadrid",
+  "ath bilbao": "athletic",
+  "athletic bilbao": "athletic",
+  "barcelona": "barcelona",
+  "celta vigo": "celta",
+  "celta": "celta",
+
+  // Premier
+  "man united": "manchesterunited",
+  "manchester united": "manchesterunited",
+  "man city": "manchestercity",
+  "manchester city": "manchestercity",
+  "nott'm forest": "nottingham_forest",
+  "nottingham forest": "nottingham_forest",
+};
+
+function slugifyEs(s){
+  return (s||'')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // sin acentos
+    .replace(/[^a-z0-9]+/g,'')                      // solo a-z0-9 (sin guiones)
+    .trim();
 }
-function setCrests(home, away){
-  const imgH=$('#crestHome'), imgA=$('#crestAway'), fallback='assets/logo.png';
-  const srcH=`assets/crests/${slugifyTeam(home)}.png`, srcA=`assets/crests/${slugifyTeam(away)}.png`;
-  const safe=(img,src)=>{ if(!img) return; img.onerror=()=>{img.onerror=null;img.src=fallback}; img.src=src; img.alt=src; };
-  safe(imgH,srcH); safe(imgA,srcA);
+
+// Devuelve /assets/<carpeta>/<archivo>.png
+function logoPathForClub(leagueCodeOrFolder, teamName){
+  const folder = (LEAGUE_FOLDER[leagueCodeOrFolder] || leagueCodeOrFolder || 'laliga');
+  const key = (teamName||'').toLowerCase().trim()
+              .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const file = TEAM_OVERRIDES[key] || slugifyEs(teamName);
+  return `/assets/${folder}/${file}.png`;
 }
-function updateCrestsFromSelects(){ setCrests($('#home')?.value, $('#away')?.value); }
+
+function setCrests(home, away, leagueCode='SP1'){
+  const imgH = $('#crestHome'), imgA = $('#crestAway');
+  const fallback = '/assets/logo.png';
+  const srcH = logoPathForClub(leagueCode, home);
+  const srcA = logoPathForClub(leagueCode, away);
+  const safe = (img, src)=>{
+    if(!img) return;
+    img.onerror = ()=>{ img.onerror = null; img.src = fallback; };
+    img.src = src;
+    img.alt = src;
+  };
+  safe(imgH, srcH);
+  safe(imgA, srcA);
+}
+
+function updateCrestsFromSelects(){
+  const leagueCode = $('#leagueSelect')?.value || 'SP1'; // por defecto LaLiga
+  setCrests($('#home')?.value, $('#away')?.value, leagueCode);
+}
 
 /* ===== Sidebar y gráfico ===== */
 let chart;
@@ -533,46 +583,71 @@ async function natResolveTeam(q){
 function natFmtPct(x){ return (x*100).toFixed(1) + '%'; }
 
 async function doPredictNational(){
-  const homeLogo = imgWithFallback(logoPathForNational(H.name), H.name, 20);
-  const awayLogo = imgWithFallback(logoPathForNational(A.name), A.name, 20);
   const inpH = nat$('#nat-home');
   const inpA = nat$('#nat-away');
   const chkN = nat$('#nat-neutral');
   const msg  = nat$('#nat-msg');
   const out  = nat$('#nat-result');
 
-  if(!inpH || !inpA || !msg || !out){ return; }
+  if(!inpH || !inpA || !msg || !out) return;
 
   out.innerHTML = '';
   msg.textContent = 'Buscando selecciones…';
+
   try{
     const homeQ = (inpH.value||'').trim();
     const awayQ = (inpA.value||'').trim();
     if(!homeQ || !awayQ) throw new Error('Escribe ambos equipos (Local y Visita).');
 
+    // 1) Resolver IDs primero (H/A)
     const [H, A] = await Promise.all([natResolveTeam(homeQ), natResolveTeam(awayQ)]);
-    if(H.id === A.id) throw new Error('Local y visita no pueden ser la misma selección.');
+    if(!H?.id || !A?.id) throw new Error('No se pudo resolver alguna selección.');
+    if(H.id === A.id)    throw new Error('Local y visita no pueden ser la misma selección.');
+
+    // 2) Logos (ya con H/A definidos)
+    const homeLogo = imgWithFallback(logoPathForNational(H.name), H.name, 20);
+    const awayLogo = imgWithFallback(logoPathForNational(A.name), A.name, 20);
 
     msg.textContent = `✔ ${H.name} (id ${H.id}) vs ${A.name} (id ${A.id}) — calculando…`;
 
-    const body = JSON.stringify({ home_id: H.id, away_id: A.id, neutral: !!(chkN && chkN.checked), lookback: 10 });
-    const r = await apiNat('/predict/national', { method:'POST', headers:{'Content-Type':'application/json'}, body });
+    // 3) Llamar predicción
+    const body = JSON.stringify({
+      home_id: H.id,
+      away_id: A.id,
+      neutral: !!(chkN && chkN.checked),
+      lookback: 10
+    });
+    const r = await apiNat('/predict/national', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body
+    });
 
-    const p = r.probabilities||{}, lam = r.lambda||{}, top = r.top_scores||[];
+    const p   = r.probabilities || {};
+    const lam = r.lambda || {};
+    const top = Array.isArray(r.top_scores) ? r.top_scores : [];
+
+    // 4) Pintar resultado (incluye banderas/escudos)
     out.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        ${homeLogo}
+        <div><b>${H.name}</b></div>
+        <div style="opacity:.6">vs</div>
+        ${awayLogo}
+        <div><b>${A.name}</b></div>
+      </div>
       <div><b>Probabilidades</b></div>
       <div>🏠 <b>${H.name}</b>: ${natFmtPct(p.home||0)} &nbsp;|&nbsp; 🤝 Empate: ${natFmtPct(p.draw||0)} &nbsp;|&nbsp; 🚍 <b>${A.name}</b>: ${natFmtPct(p.away||0)}</div>
-      <div style="margin-top:6px"><small>λ Local: ${lam.home ?? '—'} — λ Visita: ${lam.away ?? '—'} ${(chkN&&chkN.checked)?'(neutral)':''}</small></div>
-      <div style="margin-top:8px"><b>Marcadores más probables</b><br>${top.map(t => `${t.score} (${natFmtPct(t.p||0)})`).join(' · ')}</div>
+      <div style="margin-top:6px"><small>λ Local: ${lam.home ?? '—'} — λ Visita: ${lam.away ?? '—'} ${chkN?.checked ? '(neutral)' : ''}</small></div>
+      <div style="margin-top:8px"><b>Marcadores más probables</b><br>${top.map(t => `${t.score} (${natFmtPct(t.p||0)})`).join(' · ') || '—'}</div>
     `;
     msg.textContent = 'Listo 💜';
   }catch(e){
-    msg.textContent = e?.message || 'No se pudo predecir.'; 
+    msg.textContent = e?.message || 'No se pudo predecir.';
     out.innerHTML = '';
     console.error(e);
   }
 }
-
 /* ===== Logos / Banderas ===== */
 function slugifyEs(s){
   return (s||'')
@@ -745,14 +820,18 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   await init();
   await loadRecent();
   await loadPredictionLeagues();
+
+  // Listeners
   $('#leagueSelect')?.addEventListener('change', loadTeams);
   $('#home')?.addEventListener('change', updateCrestsFromSelects);
   $('#away')?.addEventListener('change', updateCrestsFromSelects);
   $('#reload')?.addEventListener('click', reloadLeagues);
   $('#predict')?.addEventListener('click', doPredict);
   $('#btnFixtures')?.addEventListener('click', loadNext);
-  // 👉 nuevo: botón de duelo de selecciones
   document.querySelector('#nat-go')?.addEventListener('click', doPredictNational);
+
+  // PINTA escudos iniciales (clubs)
+  updateCrestsFromSelects();
 
   // carga inicial de fixtures (derecha)
   loadNext();
