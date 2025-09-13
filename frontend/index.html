@@ -1,847 +1,424 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sexy Sports Predictor ⚽✨</title>
-  <base href="/app/">
-  <link rel="icon" type="image/png" href="assets/logo.png">
-  <link rel="preconnect" href="https://cdn.jsdelivr.net">
-  <link rel="preconnect" href="https://unpkg.com">
+  <title>InterfazV1 — Sports Predictor</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- CSS externo -->
+  <link rel="stylesheet" href="/assets/style.css?v=4">
+
+  <!-- Estilos internos -->
   <style>
-    :root{
-      --bg:#0b0d12; --panel:#11151d; --muted:#9aa3b2; --text:#e6eaf2;
-      --brand:#8b5cf6; --brand2:#06b6d4; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444;
-      --ring: 0 0 0 2px hsl(255 85% 65% / .35);
-    }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0;
-      background:
-        radial-gradient(1200px 800px at 80% -10%, #13203a 0%, transparent 60%),
-        radial-gradient(1000px 600px at -10% 90%, #1e123a 0%, transparent 60%),
-        var(--bg);
-      color:var(--text);
-      font:16px/1.5 Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;
-    }
-    .container{max-width:1280px;margin:0 auto;padding:24px}
-    header{display:flex;align-items:center;gap:14px;margin:8px 0 18px}
-    .brandlock img{height:42px;border-radius:10px}
-    .brandlock .ttl{font-size:26px;font-weight:800;letter-spacing:.3px}
-    .muted{color:var(--muted)}
+  :root{
+    --bg:#0f0c12; --panel:#14111a; --muted:#9aa3af; --text:#e5e7eb;
+    --brand:#9b5cff; --brand-2:#00d1ff; --ok:#34d399; --bad:#f87171;
+    --card-glass: rgba(255,255,255,.04); --border: rgba(255,255,255,.08);
+    --shadow: 0 10px 30px rgba(0,0,0,.35); --radius: 16px;
+  }
+  [data-theme="light"]{
+    --bg:#f4f6fb; --panel:#ffffff; --text:#0f172a; --muted:#64748b;
+    --card-glass: rgba(0,0,0,.03); --border: rgba(15,23,42,.08)
+  }
 
-    .card{background:color-mix(in oklab,var(--panel) 86%,black 14%);
-      border:1px solid #1c2230;border-radius:20px;padding:20px;box-shadow:0 8px 30px #0008}
-    .card h2{margin:0 0 12px;font-size:18px}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;
+    background:
+      radial-gradient(1200px 800px at 20% -10%, rgba(155,92,255,.15), transparent 60%),
+      radial-gradient(1000px 700px at 120% 20%, rgba(0,209,255,.12), transparent 55%),
+      var(--bg);
+    color:var(--text);
+  }
+  a{color:inherit;text-decoration:none}
+  .app{display:grid; grid-template-columns: 260px 1fr; min-height:100vh}
+  @media (max-width: 900px){
+    .app{grid-template-columns: 1fr}
+    aside{position:sticky; top:0; z-index:50}
+  }
 
-    .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
-    .col-4{grid-column:span 4} .col-6{grid-column:span 6} .col-8{grid-column:span 8} .col-12{grid-column:span 12}
-    @media (max-width:900px){.col-4,.col-6,.col-8{grid-column:span 12}}
+  /* Sidebar */
+  aside{
+    backdrop-filter:saturate(120%) blur(6px);
+    background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.02));
+    border-right:1px solid var(--border)
+  }
+  .logo{display:flex;align-items:center; gap:10px; padding:18px 20px; border-bottom:1px solid var(--border)}
+  .logo-mark{width:36px; height:36px; display:grid; place-items:center; border-radius:12px;
+    background:linear-gradient(135deg, var(--brand), var(--brand-2)); box-shadow:0 6px 18px rgba(155,92,255,.35)}
+  .logo strong{letter-spacing:.8px}
+  nav{padding:10px}
+  .nav-btn{
+    width:100%; display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:10px 12px; margin:6px 0; border-radius:12px; color:#c9ced6; border:1px solid transparent; transition:.2s ease;
+    background:transparent; cursor:pointer;
+  }
+  .nav-btn .left{display:flex; align-items:center; gap:12px}
+  .nav-btn svg{opacity:.9}
+  .nav-btn:hover{background:rgba(255,255,255,.05); color:white; border-color:var(--border); transform:translateY(-1px)}
+  .nav-btn.active{
+    background:linear-gradient(180deg, rgba(155,92,255,.20), rgba(155,92,255,.08));
+    color:white; border-color:rgba(155,92,255,.35); box-shadow:0 8px 24px rgba(155,92,255,.18) inset
+  }
 
-    /* Layout superior de 3 columnas */
-    .hero3{display:grid;grid-template-columns:5fr 7fr 4fr;gap:18px}
-    @media (max-width:1200px){.hero3{grid-template-columns:1fr 1fr}}
-    @media (max-width:900px){.hero3{grid-template-columns:1fr}}
+  /* Topbar */
+  header{
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+    padding:18px 22px; border-bottom:1px solid var(--border);
+    background:rgba(0,0,0,.15); backdrop-filter:blur(8px)
+  }
+  .bell{position:relative; padding:10px; border-radius:12px; border:1px solid var(--border); background:transparent}
+  .dot{position:absolute; right:8px; top:6px; width:8px; height:8px; border-radius:999px; background:var(--brand)}
 
-    label{display:block;margin:0 0 6px;font-size:13px;color:var(--muted)}
-    select,input,button{width:100%;padding:12px 14px;border-radius:12px;background:#0f1420;border:1px solid #20283a;color:var(--text)}
-    select:focus,input:focus,button:focus{outline:none;box-shadow:var(--ring);border-color:#5b70ff}
-    .btn{cursor:pointer;font-weight:700;letter-spacing:.3px;background:linear-gradient(135deg,var(--brand),var(--brand2));border:none;color:white;transition:.2s transform,.2s filter}
-    .btn:hover{filter:brightness(1.08)} .btn:active{transform:translateY(1px)}
+  /* Views */
+  .view{padding:22px}
+  .hidden{display:none}
+  .fade{animation:fade .25s ease}
+  @keyframes fade{from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:none}}
 
-    .row{display:flex;gap:12px;flex-wrap:wrap}
-    .pill{display:inline-flex;gap:10px;align-items:center;background:#0e1320;border:1px solid #20283a;padding:8px 12px;border-radius:999px}
-    .pill.stat{justify-content:space-between;margin:6px 0;font-size:13px}
-    .pill.stat b{font-variant-numeric:tabular-nums}
-    .ok{color:var(--ok)} .warning{color:var(--warn)} .err{color:var(--err)}
+  /* Card & grids */
+  .card{background:var(--card-glass); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow)}
+  .card h2{font-size:16px; font-weight:600; margin:0}
+  .card .head{display:flex; align-items:center; justify-content:space-between; padding:16px 16px 10px 16px}
+  .card .body{padding:10px 16px 16px 16px}
 
-    .prob-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-    @media (max-width:620px){.prob-cards{grid-template-columns:1fr}}
-    .prob{padding:14px;border-radius:16px;border:1px solid #1b2232;background:#0f1522}
-    .prob h4{margin:0 0 6px;font-size:13px;color:var(--muted)}
-    .prob .p{font-size:24px;font-weight:800}
+  /* Home grid (izq: tablas, der: goleadores) */
+  .grid-home{display:grid; grid-template-columns: 2fr 1fr; gap:22px}
+  .col-left{display:flex; flex-direction:column; gap:22px}
+  @media (max-width: 1100px){ .grid-home{grid-template-columns:1fr} }
 
-    /* Escudos */
-    .crests{display:flex;gap:24px;align-items:center;justify-content:flex-start;margin:18px 0}
-    .crest{display:grid;place-items:center;width:80px;height:80px;border-radius:18px;background:#0e1320;border:1px solid #20283a;box-shadow:0 8px 30px #0006}
-    .crest img{max-height:56px;max-width:56px}
+  /* Tables */
+  .table{width:100%; border-collapse:collapse; font-size:14px}
+  .table th{
+    color:#b1b8c5; font-weight:600; text-align:left; padding:10px 8px;
+    border-bottom:1px solid var(--border); text-transform:uppercase; font-size:12px
+  }
+  .table td{padding:10px 8px; border-bottom:1px solid rgba(255,255,255,.04)}
+  .table tbody tr:nth-child(odd){ background: rgba(255,255,255,.02) }
+  .table tbody tr:nth-child(even){ background: rgba(255,255,255,.00) }
+  .table tr:hover{background:rgba(255,255,255,.05)}
+  .table td.win{color: var(--ok); font-weight:600}
+  .table td.loss{color: var(--bad); font-weight:600}
+  .table td.draw{color: var(--muted)}
+  .table td.score{font-weight:700; letter-spacing:.02em}
 
-    /* Últimos partidos */
-    .win  { font-weight:800; color:#22c55e; }
-    .loss { color:#9aa3b2; }
-    .draw { color:#e6eaf2; }
-    .score{ font-weight:700; }
+  /* Predicción (layout 3 columnas) */
+  .cols3{display:grid; grid-template-columns: 1.2fr 1.4fr 1.2fr; gap:22px}
+  @media (max-width: 1200px){ .cols3{grid-template-columns:1fr} }
+  .field{display:grid; gap:6px; margin-bottom:12px}
+  .input, .select{
+    background:rgba(255,255,255,.06); border:1px solid var(--border); color:var(--text);
+    border-radius:12px; padding:10px 12px; outline:none
+  }
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:10px; padding:12px 14px;
+    border-radius:12px; border:1px solid rgba(0,0,0,.0);
+    background:linear-gradient(90deg, var(--brand), var(--brand-2));
+    color:white; font-weight:600; box-shadow:0 8px 24px rgba(0,209,255,.15); cursor:pointer
+  }
+  .pill{font-size:12px; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background:rgba(255,255,255,.03)}
 
-    footer{margin:28px 0 14px;text-align:center;color:#7f8798;font-size:13px}
-    a{color:#a7b5ff;text-decoration:none} a:hover{text-decoration:underline}
+  /* ===== Barras verticales 1X2 ===== */
+  .vbars{display:flex; align-items:flex-end; gap:26px; height:280px; padding:4px 8px 0}
+  .vbars .vcol{flex:1; display:flex; flex-direction:column; align-items:center}
+  .vbars .vcol .bar{
+    width:60px; height:8%;
+    background:linear-gradient(180deg, rgba(155,92,255,.75), rgba(0,209,255,.55));
+    border-radius:12px 12px 8px 8px; box-shadow: inset 0 -8px 16px rgba(0,0,0,.25);
+    transition:height .35s ease;
+  }
+  .vbars .name{margin-top:8px; color:#b1b8c5; font-size:12px}
+  .vbars .val{margin-top:2px; font-weight:700}
+
+  /* ===== Barras horizontales (OU/BTTS) ===== */
+  .hbars{margin-top:8px}
+  .hrow{
+    display:grid; grid-template-columns:120px 1fr 52px;
+    gap:10px; align-items:center; margin:8px 0;
+  }
+  .hrow .fill{
+    height:12px; border-radius:999px; width:0%;
+    background:linear-gradient(90deg, var(--brand), var(--brand-2));
+    transition: width .35s ease;
+  }
+
+  /* ===== Pildoritas (columna derecha) ===== */
+  .sysgrid{
+    display:grid; grid-template-columns: repeat(2, minmax(0,1fr));
+    gap:12px;
+  }
+  .pillstat{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 12px; border-radius:14px;
+    border:1px solid var(--border); background:rgba(255,255,255,.03);
+  }
+  .pillstat .k{color:#b1b8c5; font-size:12px}
+  .pillstat .v{font-weight:700}
+
+  /* Pretty scrollbars */
+  ::-webkit-scrollbar{height:10px; width:10px}
+  ::-webkit-scrollbar-thumb{background:linear-gradient(180deg, var(--brand), var(--brand-2)); border-radius:12px}
   </style>
 </head>
 <body>
-<header class="app-header">
-  <div class="brandlock">
-    <img src="assets/ssp-mark.png" alt="Logo">
-    <div class="ttl">Sexy Sports Predictor</div>
-  </div>
-</header>
-
-<div class="container">
-
-<!-- ===== TOP: 3 columnas ===== -->
-<section class="hero3">
-  <!-- IZQUIERDA: controles + escudos -->
-  <div class="card">
-    <h2>Configura tu predicción</h2>
-
-    <div class="grid">
-      <div class="col-6">
-        <label for="leagueSelect">Liga</label>
-        <select id="leagueSelect" style="min-width:260px;">
-          <option value="">— Selecciona liga —</option>
-        </select>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside>
+      <div class="logo" style="justify-content:center; display:flex; padding:20px;">
+        <img src="/assets/logo.png" alt="Logo" style="width:180px; height:auto;" />
       </div>
-
-      <div class="col-6" style="display:flex;align-items:flex-end;justify-content:flex-end">
-        <button id="reload" class="btn" style="min-width:180px">🔄 Cargar ligas</button>
-      </div>
-
-      <div class="col-6">
-        <label for="home">Local</label>
-        <select id="home"></select>
-      </div>
-
-      <div class="col-6">
-        <label for="away">Visita</label>
-        <select id="away"></select>
-      </div>
-
-      <div class="col-12" style="margin-top:8px">
-        <button id="predict" class="btn" style="width:100%;padding:14px 18px;font-size:16px">
-          ✨ Predecir partido
+      <nav>
+        <button class="nav-btn active" data-page="home">
+          <span class="left">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9"/><path d="M9 21V9h6v12"/></svg>
+            <span>Home</span>
+          </span>
+          <span class="pill">Inicio</span>
         </button>
+        <button class="nav-btn" data-page="prediccion">
+          <span class="left">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v4H3z"/><path d="M8 7v14M16 7v14"/></svg>
+            <span>Predicción</span>
+          </span>
+          <span class="pill">Nuevo</span>
+        </button>
+        <button class="nav-btn" data-page="estado">
+          <span class="left">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            <span>Estado del Sistema</span>
+          </span>
+        </button>
+        <button class="nav-btn" data-page="config">
+          <span class="left">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06A2 2 0 1 1 7.04 3.3l.06.06a1.65 1.65 0 0 0 1.82.33H9A1.65 1.65 0 0 0 10.51 2.2V2a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .66.39 1.26 1 1.51.31.13.65.2 1 .2A2 2 0 1 1 22 15h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span>Configuración</span>
+          </span>
+        </button>
+      </nav>
+    </aside>
+
+    <!-- Main -->
+    <div>
+      <header>
+        <div>
+          <div id="title" style="font-size:22px; font-weight:700">Bienvenido, Usuario..</div>
+          <div id="subtitle" style="color:var(--muted); font-size:12px; margin-top:2px">Bienvenido, nos alegra volver a verte!!!</div>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center">
+          <button id="theme-toggle" class="pill" type="button" title="Cambiar tema">🌓 Tema</button>
+          <button class="bell" aria-label="Notificaciones">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="dot"></span>
+          </button>
+        </div>
+      </header>
+
+      <!-- HOME -->
+      <section id="view-home" class="view fade">
+        <div class="grid-home">
+          <!-- COLUMNA IZQUIERDA: Resultados + Fixtures -->
+          <div class="col-left">
+            <!-- Últimos resultados -->
+            <section class="card">
+              <div class="head">
+                <h2>Últimos 10 resultados</h2>
+              </div>
+              <div class="body" style="overflow:auto">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th><th>Liga</th><th>Local</th><th>Marcador</th><th>Visita</th>
+                    </tr>
+                  </thead>
+                  <tbody id="rows-results"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <!-- Próximos partidos -->
+            <section class="card">
+              <div class="head">
+                <h2>Próximos 5 partidos</h2>
+              </div>
+              <div class="body" style="overflow:auto">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th><th>Liga</th><th>Local</th><th>Visita</th><th>Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody id="rows-fixtures"></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+
+          <!-- COLUMNA DERECHA: Top Scorer dinámico -->
+          <aside class="card">
+            <div class="head">
+              <h2>Top Scorer</h2>
+            </div>
+            <div class="body" id="topscorers">Cargando goleadores…</div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- PREDICCIÓN -->
+      <section id="view-prediccion" class="view hidden">
+        <div class="cols3">
+          <!-- 1) Configuración -->
+          <div class="card">
+            <div class="head">
+              <h2>Configura tu predicción</h2>
+              <button class="pill" id="btn-load-leagues" type="button">Cargar ligas</button>
+            </div>
+            <div class="body">
+              <div class="field">
+                <label for="sel-league">Liga</label>
+                <select class="select" id="sel-league"></select>
+              </div>
+              <div class="field">
+                <label for="sel-home">Local</label>
+                <select class="select" id="sel-home"></select>
+              </div>
+              <div class="field">
+                <label for="sel-away">Visita</label>
+                <select class="select" id="sel-away"></select>
+              </div>
+              <button class="btn" id="btn-predict">⚡ Predecir partido</button>
+              <div style="color:var(--muted); font-size:12px; margin-top:8px">Equipos desde dataset local.</div>
+            </div>
+          </div>
+
+          <!-- 2) Barras verticales 1X2 -->
+          <div class="card">
+            <div class="head"><h2>Distribución de probabilidades</h2></div>
+            <div class="body">
+              <div class="vbars" id="vbars-1x2">
+                <div class="vcol">
+                  <div class="bar" id="vbar-home"></div>
+                  <div class="name">Local</div>
+                  <div class="val" id="vlab-home">—</div>
+                </div>
+                <div class="vcol">
+                  <div class="bar" id="vbar-draw"></div>
+                  <div class="name">Empate</div>
+                  <div class="val" id="vlab-draw">—</div>
+                </div>
+                <div class="vcol">
+                  <div class="bar" id="vbar-away"></div>
+                  <div class="name">Visita</div>
+                  <div class="val" id="vlab-away">—</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3) Columna derecha: OU/BTTS + Pildoritas -->
+          <div class="card" id="results">
+            <div class="head"><h2>Mercados adicionales</h2></div>
+            <div class="body">
+              <h3 style="margin:6px 0 4px">Over/Under 2.5</h3>
+              <div class="hbars">
+                <div class="hrow">
+                  <span>Over 2.5</span>
+                  <div class="fill" id="bar-ou-over"></div>
+                  <span id="lab-ou-over">—</span>
+                </div>
+                <div class="hrow">
+                  <span>Under 2.5</span>
+                  <div class="fill" id="bar-ou-under"></div>
+                  <span id="lab-ou-under">—</span>
+                </div>
+              </div>
+
+              <h3 style="margin:14px 0 6px">BTTS</h3>
+              <div class="hbars">
+                <div class="hrow">
+                  <span>Sí</span>
+                  <div class="fill" id="bar-btts-yes"></div>
+                  <span id="lab-btts-yes">—</span>
+                </div>
+                <div class="hrow">
+                  <span>No</span>
+                  <div class="fill" id="bar-btts-no"></div>
+                  <span id="lab-btts-no">—</span>
+                </div>
+              </div>
+
+              <h3 style="margin:14px 0 10px">Resumen</h3>
+              <div class="sysgrid">
+                <div class="pillstat"><span class="k">⚽ XG Local</span><span class="v" id="stat-xg-h">—</span></div>
+                <div class="pillstat"><span class="k">⚽ XG Visita</span><span class="v" id="stat-xg-a">—</span></div>
+                <div class="pillstat"><span class="k">Σ XG</span><span class="v" id="stat-xg-t">—</span></div>
+
+                <div class="pillstat"><span class="k">Over 2.5</span><span class="v" id="stat-ou-o">—</span></div>
+                <div class="pillstat"><span class="k">Under 2.5</span><span class="v" id="stat-ou-u">—</span></div>
+
+                <div class="pillstat"><span class="k">BTTS Sí</span><span class="v" id="stat-btts-y">—</span></div>
+                <div class="pillstat"><span class="k">BTTS No</span><span class="v" id="stat-btts-n">—</span></div>
+
+                <div class="pillstat"><span class="k">Córners L</span><span class="v" id="stat-c-h">—</span></div>
+                <div class="pillstat"><span class="k">Córners V</span><span class="v" id="stat-c-a">—</span></div>
+
+                <div class="pillstat"><span class="k">Amarillas L</span><span class="v" id="stat-y-h">—</span></div>
+                <div class="pillstat"><span class="k">Amarillas V</span><span class="v" id="stat-y-a">—</span></div>
+
+                <div class="pillstat"><span class="k">Rojas L</span><span class="v" id="stat-r-h">—</span></div>
+                <div class="pillstat"><span class="k">Rojas V</span><span class="v" id="stat-r-a">—</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+<!-- ESTADO DEL SISTEMA -->
+<section id="view-estado" class="view hidden">
+  <div class="card">
+    <div class="head">
+      <h2>Estado del Sistema</h2>
+      <button class="pill" id="btn-refresh-status" type="button">🔄 Refrescar</button>
+    </div>
+    <div class="body">
+      <div id="system-status" class="status-box">
+        Cargando estado del sistema…
       </div>
     </div>
+  </div>
+</section>
 
-    <div id="hint" class="muted" style="margin-top:10px;font-size:13px">
-      Sugerencia: primero elige la liga y luego los equipos.
-    </div>
+<!-- CONFIG (vacía por ahora, solo para que no quede huérfano el botón) -->
+<section id="view-config" class="view hidden">
+  <div class="card">
+    <div class="head"><h2>Configuración</h2></div>
+    <div class="body">Próximamente…</div>
+  </div>
+</section>
 
-    <!-- Escudos (si ya tenías lógica para poner imágenes, se mantiene) -->
-    <div class="crests">
-      <div class="crest"><img id="crestHome" alt="Home"></div>
-      <div class="crest"><img id="crestAway" alt="Away"></div>
     </div>
   </div>
 
-    <!-- CENTRO: gráfico -->
-    <div class="card">
-      <h2>Distribución de probabilidades</h2>
-      <canvas id="chart" height="220"></canvas>
-    </div>
-<!--
-<div class="card">
-  <h2>🌍 Selecciones de ligas</h2>
-  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
-    <select id="countrySelect">
-      <option value="203">🇹🇷 Turquía – Süper Lig</option>
-      <option value="98">🇯🇵 Japón – J1 League</option>
-      <option value="197">🇬🇷 Grecia – Super League 1</option>
-      <option value="169">🇨🇳 China – Super League</option>
-      <option value="333">🇺🇦 Ucrania – Premier League</option>
-    </select>
-    <button class="btn" id="btnFixtures">🔮 Próximos 10 partidos</button>
-  </div>
-
-  <ul id="fixturesList" style="margin:0;padding-left:18px"></ul>
--->
-<div class="card" id="duelo-naciones">
-  <h2>Duelo de Selecciones</h2>
-
-  <div class="row" style="display:flex; gap:8px; align-items:center; margin:6px 0">
-    <label style="min-width:56px">Local</label>
-    <input id="nat-home" type="text" placeholder="Ej: Chile" style="flex:1; padding:6px">
-  </div>
-
-  <div class="row" style="display:flex; gap:8px; align-items:center; margin:6px 0">
-    <label style="min-width:56px">Visita</label>
-    <input id="nat-away" type="text" placeholder="Ej: Argentina" style="flex:1; padding:6px">
-  </div>
-
-  <div class="row" style="display:flex; gap:10px; align-items:center; margin:8px 0">
-    <label><input id="nat-neutral" type="checkbox"> Campo neutral</label>
-    <button id="nat-go" class="btn">Predecir</button>
-  </div>
-
-  <div id="nat-msg" style="color:#9aa3b2; font-size:0.9rem; margin-top:4px"></div>
-  <div id="nat-result" class="result" style="margin-top:10px; font-size:0.95rem; line-height:1.35"></div>
-</div>
-
-</div>
-    <!-- DERECHA: estado + métricas rápidas -->
-    <div class="card">
-      <h2>Estado del sistema</h2>
-      <div class="row" style="margin-bottom:10px">
-        <div class="pill"><span>API:</span> <strong id="apiState" class="warning">comprobando…</strong></div>
-        <div class="pill"><span>Equipos:</span> <strong id="apiTeams" class="muted">—</strong></div>
-      </div>
-<!--
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div class="pill stat">⚽ xG Local: <b id="sb_xgh">—</b></div>
-        <div class="pill stat">⚽ xG Visita: <b id="sb_xga">—</b></div>
-        <div class="pill stat">📊 Total xG: <b id="sb_xgt">—</b></div>
-        <div class="pill stat">📈 Over 2.5: <b id="sb_over">—</b></div>
-        <div class="pill stat">📉 Under 2.5: <b id="sb_under">—</b></div>
-        <div class="pill stat">🔔 BTTS Sí: <b id="sb_bttsYes">—</b></div>
-        <div class="pill stat">🔕 BTTS No: <b id="sb_bttsNo">—</b></div>
-        <div class="pill stat">🚩 Córners Local: <b id="sb_cornh">—</b></div>
-        <div class="pill stat">🚩 Córners Visita: <b id="sb_corna">—</b></div>
-        <div class="pill stat">📊 Total: <b id="sb_cort">—</b></div>
-        <div class="pill stat">⬆️ Over 9.5: <b id="sb_corOver">—</b></div>
-        <div class="pill stat">⬇️ Under 9.5: <b id="sb_corUnder">—</b></div>
-        <div class="pill stat">🟨 Amarillas Local: <b id="sb_yelh">—</b></div>
-        <div class="pill stat">🟨 Amarillas Visita: <b id="sb_yela">—</b></div>
-        <div class="pill stat">📊 Total: <b id="sb_yelt">—</b></div>
-        <div class="pill stat">⬆️ Over 4.5: <b id="sb_yelOver">—</b></div>
-        <div class="pill stat">⬇️ Under 4.5: <b id="sb_yelUnder">—</b></div>
-        <div class="pill stat">🟥 Rojas Local: <b id="sb_redh">—</b></div>
-        <div class="pill stat">🟥 Rojas Visita: <b id="sb_reda">—</b></div>
-        <div class="pill stat">📊 Total: <b id="sb_redt">—</b></div>
-        <div class="pill stat">⚽ Goles =0: <b id="sb_g0">—</b></div>
-        <div class="pill stat">⚽ Goles =1: <b id="sb_g1">—</b></div>
-        <div class="pill stat">⚽ Goles =2: <b id="sb_g2">—</b></div>
-        <div class="pill stat">⚽ Goles 3+: <b id="sb_g3p">—</b></div>
-      </div>
--->
-    </div>
-  </section>
-
-  <!-- ===== RESUMEN grande ===== -->
-  <section class="grid" style="margin-top:18px">
-    <div class="col-12">
-      <div class="card">
-        <h2>Resumen</h2>
-        <div class="prob-cards">
-          <div class="prob"><h4>🏠 Local</h4><div class="p" id="p_home">—</div></div>
-          <div class="prob"><h4>🤝 Empate</h4><div class="p" id="p_draw">—</div></div>
-          <div class="prob"><h4>🛫 Visita</h4><div class="p" id="p_away">—</div></div>
-        </div>
-
-        <div class="row" style="margin-top:10px">
-          <span class="pill">⚽ xG Local: <b id="xgh">—</b></span>
-          <span class="pill">⚽ xG Visita: <b id="xga">—</b></span>
-          <span class="pill">📊 Total xG: <b id="xgt">—</b></span>
-        </div>
-
-        <div class="row" style="margin-top:10px">
-          <span class="pill">📈 Over 2.5: <b id="over">—</b></span>
-          <span class="pill">📉 Under 2.5: <b id="under">—</b></span>
-          <span class="pill">🔔 BTTS Sí: <b id="bttsYes">—</b></span>
-          <span class="pill">🔕 BTTS No: <b id="bttsNo">—</b></span>
-        </div>
-
-        <div class="row" style="margin-top:10px">
-          <span class="pill">🚩 Córners Local: <b id="cornh">—</b></span>
-          <span class="pill">🚩 Córners Visita: <b id="corna">—</b></span>
-          <span class="pill">📊 Total: <b id="cort">—</b></span>
-          <span class="pill">⬆️ Over 9.5: <b id="corOver">—</b></span>
-          <span class="pill">⬇️ Under 9.5: <b id="corUnder">—</b></span>
-        </div>
-
-        <div class="row" style="margin-top:10px">
-          <span class="pill">🟨 Amarillas Local: <b id="yelh">—</b></span>
-          <span class="pill">🟨 Amarillas Visita: <b id="yela">—</b></span>
-          <span class="pill">📊 Total: <b id="yelt">—</b></span>
-          <span class="pill">⬆️ Over 4.5: <b id="yelOver">—</b></span>
-          <span class="pill">⬇️ Under 4.5: <b id="yelUnder">—</b></span>
-        </div>
-
-        <div class="row" style="margin-top:10px">
-          <span class="pill">🟥 Rojas Local: <b id="redh">—</b></span>
-          <span class="pill">🟥 Rojas Visita: <b id="reda">—</b></span>
-          <span class="pill">📊 Total: <b id="redt">—</b></span>
-        </div>
-
-        <div class="row" style="margin-top:10px">
-          <span class="pill">⚽ Goles =0: <b id="g0">—</b></span>
-          <span class="pill">⚽ Goles =1: <b id="g1">—</b></span>
-          <span class="pill">⚽ Goles =2: <b id="g2">—</b></span>
-          <span class="pill">⚽ Goles 3+: <b id="g3p">—</b></span>
-        </div>
-
-        <div class="muted" style="margin-top:12px;font-size:12px">
-          Fuentes: 1X2 <span id="src1x2">—</span> · O/U <span id="srcou">—</span> · BTTS <span id="srcbtts">—</span>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ===== Tabla últimos partidos ===== -->
-  <section class="grid" style="margin-top:18px">
-    <div class="col-12">
-      <div class="card">
-        <h2>🗓️ Últimos 10 partidos (global)</h2>
-        <div class="muted" id="recentHint" style="margin-bottom:8px">Cargando…</div>
-        <div style="overflow:auto">
-          <table style="width:100%;border-collapse:collapse">
-            <thead>
-              <tr style="text-align:left;border-bottom:1px solid #1b2232">
-                <th style="padding:8px">Fecha</th>
-                <th style="padding:8px">Liga</th>
-                <th style="padding:8px">Local</th>
-                <th style="padding:8px">Marcador</th>
-                <th style="padding:8px">Visita</th>
-              </tr>
-            </thead>
-            <tbody id="recentBody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <footer>
-    Hecho con 💜 por nosotros · <a href="/docs" target="_blank">API Docs</a>
-  </footer>
-</div>
-
-<!-- Chart.js -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-
-<script>
-/* ===== Helpers mínimos ===== */
-const $  = (q)=>document.querySelector(q);
-const api=(p,opt)=>fetch(p,opt).then(r=>{if(!r.ok)throw new Error(r.status);return r.json();});
-const fmt=(p)=> (p==null||isNaN(p))? '—' : (p*100).toFixed(1)+'%';
-
-/* ===== Ligas (con banderitas) ===== */
-const PRED_ORDER = ["SP1","E0","D1","I1","F1","N1","P1","SC0","B1","T1","J1","G1","UKR"];
-const PRED_LABEL = {
-  SP1:"LaLiga (ES)", E0:"Premier (EN)", D1:"Bundesliga (DE)", I1:"Serie A (IT)", F1:"Ligue 1 (FR)",
-  N1:"Eredivisie (NL)", P1:"Primeira (PT)", SC0:"Scottish Prem (UK)", B1:"Jupiler Pro (BE)",
-  T1:"Superliga (TR)", J1:"J1 League (JP)", G1:"Superliga (GR)", UKR:"Premier League (UA)"
-};
-const PRED_FLAG = {
-  SP1:"🇪🇸", E0:"🇬🇧", D1:"🇩🇪", I1:"🇮🇹", F1:"🇫🇷", N1:"🇳🇱",
-  P1:"🇵🇹", SC0:"🏴", B1:"🇧🇪", T1:"🇹🇷", J1:"🇯🇵", G1:"🇬🇷", UKR:"🇺🇦"
-};
-/* Compat: el resto del código usa estas */
-const LEAGUE_NAMES   = PRED_LABEL;
-const DEFAULT_LEAGUES= PRED_ORDER;
-
-async function safeGet(url){ try{const r=await fetch(url); if(!r.ok) throw 0; return await r.json();}catch{ return null; } }
-
-async function loadPredictionLeagues(){
-  const sel = $('#leagueSelect'); if(!sel) return;
-  const data = await safeGet("/leagues/supported");
-  const map = Object.fromEntries((data?.leagues || []).map(x=>[x.code,x]));
-  sel.innerHTML = '<option value="">— Selecciona liga —</option>';
-  PRED_ORDER.forEach(code=>{
-    const flag=PRED_FLAG[code]||"🏳️", name=PRED_LABEL[code]||code, has=map[code]?.has_data?" · ✓ datos":"";
-    const opt=document.createElement('option'); opt.value=code; opt.textContent=`${flag} ${name}${has}`;
-    sel.appendChild(opt);
-  });
-}
-
-/* ===== Escudos (clubs) ===== */
-const LEAGUE_FOLDER = {
-  "SP1": "laliga",
-  "E0":  "premier",
-  "D1":  "bundesliga",
-  "I1":  "seriea",
-  "F1":  "ligue1",
-};
-
-// Alias desde cómo viene el nombre (API/tu UI) → archivo real en /assets/<carpeta>/<archivo>.png
-const TEAM_OVERRIDES = {
-  // LaLiga
-  "real madrid": "realmadrid",
-  "atlético madrid": "atlmadrid",
-  "atletico madrid": "atlmadrid",
-  "ath madrid": "atlmadrid",
-  "ath bilbao": "athletic",
-  "athletic bilbao": "athletic",
-  "barcelona": "barcelona",
-  "celta vigo": "celta",
-  "celta": "celta",
-
-  // Premier
-  "man united": "manchesterunited",
-  "manchester united": "manchesterunited",
-  "man city": "manchestercity",
-  "manchester city": "manchestercity",
-  "nott'm forest": "nottingham_forest",
-  "nottingham forest": "nottingham_forest",
-};
-
-function slugifyEs(s){
-  return (s||'')
-    .toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // sin acentos
-    .replace(/[^a-z0-9]+/g,'')                      // solo a-z0-9 (sin guiones)
-    .trim();
-}
-
-// Devuelve /assets/<carpeta>/<archivo>.png
-function logoPathForClub(leagueCodeOrFolder, teamName){
-  const folder = (LEAGUE_FOLDER[leagueCodeOrFolder] || leagueCodeOrFolder || 'laliga');
-  const key = (teamName||'').toLowerCase().trim()
-              .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-  const file = TEAM_OVERRIDES[key] || slugifyEs(teamName);
-  return `/assets/${folder}/${file}.png`;
-}
-
-function setCrests(home, away, leagueCode='SP1'){
-  const imgH = $('#crestHome'), imgA = $('#crestAway');
-  const fallback = '/assets/logo.png';
-  const srcH = logoPathForClub(leagueCode, home);
-  const srcA = logoPathForClub(leagueCode, away);
-  const safe = (img, src)=>{
-    if(!img) return;
-    img.onerror = ()=>{ img.onerror = null; img.src = fallback; };
-    img.src = src;
-    img.alt = src;
-  };
-  safe(imgH, srcH);
-  safe(imgA, srcA);
-}
-
-function updateCrestsFromSelects(){
-  const leagueCode = $('#leagueSelect')?.value || 'SP1'; // por defecto LaLiga
-  setCrests($('#home')?.value, $('#away')?.value, leagueCode);
-}
-
-/* ===== Sidebar y gráfico ===== */
-let chart;
-function renderChart(ph,pd,pa){
-  const ctx=$('#chart');
-  const data={labels:['Local','Empate','Visita'],datasets:[{label:'Prob',data:[ph,pd,pa]}]};
-  if(chart){ chart.data=data; chart.update(); return; }
-  chart=new Chart(ctx,{type:'bar',data,options:{responsive:true,scales:{y:{beginAtZero:true,max:1}},plugins:{legend:{display:false}}}});
-}
-function renderSidebarMetrics(r){
-  const set=(id,val,asPct=false)=>{ const el=$('#'+id); if(!el) return; el.textContent=(val==null|| (asPct&&isNaN(val)))?'—':(asPct?(val*100).toFixed(1)+'%':val); };
-  set('sb_xgh',r.exp_goals_home); set('sb_xga',r.exp_goals_away); set('sb_xgt',r.exp_goals_total);
-  set('sb_over',r.ou_over25,true); set('sb_under',r.ou_under25,true);
-  set('sb_bttsYes',r.btts_yes,true); set('sb_bttsNo',r.btts_no,true);
-  set('sb_cornh',r.exp_corners_home); set('sb_corna',r.exp_corners_away); set('sb_cort',r.exp_corners_total);
-  set('sb_corOver',r.corners_over95,true); set('sb_corUnder',r.corners_under95,true);
-  set('sb_yelh',r.exp_yellows_home); set('sb_yela',r.exp_yellows_away); set('sb_yelt',r.exp_yellows_total);
-  set('sb_yelOver',r.yellows_over45,true); set('sb_yelUnder',r.yellows_under45,true);
-  set('sb_redh',r.exp_reds_home); set('sb_reda',r.exp_reds_away); set('sb_redt',r.exp_reds_total);
-  set('sb_g0',r.p_goals_0,true); set('sb_g1',r.p_goals_1,true); set('sb_g2',r.p_goals_2,true); set('sb_g3p',r.p_goals_3plus,true);
-}
-
-/* ===== Init/health + ligas recientes ===== */
-async function init(){
-  try{
-    const h=await api('/health');
-    $('#apiState').textContent='OK'; $('#apiState').className='ok';
-    $('#apiTeams').textContent=h.teams?.length ?? '—';
-  }catch{ $('#apiState').textContent='Error'; $('#apiState').className='err'; }
-}
-async function loadRecent(){
-  try{
-    const data=await api("/recent?limit=10");
-    const body=$("#recentBody"), hint=$("#recentHint"); body.innerHTML="";
-    if(!data.matches || !data.matches.length){ hint.innerText="No hay partidos recientes."; return; }
-    hint.style.display="none";
-    data.matches.forEach(m=>{
-      const tr=document.createElement("tr");
-      const score=(m.FTHG==null||m.FTAG==null)?"—":`${m.FTHG} - ${m.FTAG}`;
-      let cls="draw"; if(m.FTHG!=null && m.FTAG!=null){ if(m.FTHG>m.FTAG) cls="win"; else if(m.FTHG<m.FTAG) cls="loss"; }
-      tr.innerHTML=`
-        <td style="padding:8px">${m.Date || "—"}</td>
-        <td style="padding:8px">${(LEAGUE_NAMES[m.League]||m.League||"—")}</td>
-        <td style="padding:8px" class="${cls}">${m.HomeTeam || "—"}</td>
-        <td style="padding:8px" class="score">${score}</td>
-        <td style="padding:8px" class="${cls==="win"?"loss":(cls==="loss"?"win":"draw")}">${m.AwayTeam || "—"}</td>`;
-      body.appendChild(tr);
-    });
-  }catch{ $("#recentHint").innerText="Error al cargar."; }
-}
-
-/* ===== Equipos por liga (unificada y usando #leagueSelect) ===== */
-async function loadTeams(){
-  const lg = $('#leagueSelect')?.value;
-  const selHome = $('#home'), selAway = $('#away');
-  const fill=(el,items)=>{ el.innerHTML=''; const o0=document.createElement('option');o0.value='';o0.text='— Selecciona —'; el.appendChild(o0);
-                           items.forEach(x=>{ const o=document.createElement('option'); o.value=o.text=x; el.appendChild(o); }); };
-
-  if(!lg){ fill(selHome,[]); fill(selAway,[]); updateCrestsFromSelects(); return; }
-
-  // 1) intenta dataset local
-  try{
-    const t=await api('/teams?league='+encodeURIComponent(lg));
-    const teams=(t.teams||[]).sort((a,b)=>a.localeCompare(b));
-    if(teams.length){
-      fill(selHome,teams); fill(selAway,teams);
-      if(teams.length>=2){ selHome.value=teams[0]; selAway.value=teams[1]; }
-      updateCrestsFromSelects();
-      $('#hint').textContent='✅ Equipos desde dataset local.';
-      return;
-    }
-  }catch{}
-
-  // 2) fallback: ApiSports (usando selección de la derecha)
-  const rightId = $('#countrySelect')?.value;
-  if(!rightId){
-    fill(selHome,[]); fill(selAway,[]);
-    $('#hint').textContent='ℹ️ Liga no está en el dataset. Selecciona una liga a la derecha para cargar equipos por API.';
-    updateCrestsFromSelects();
-    return;
-  }
-  try{
-    const r=await fetch(`/providers/teams?league_id=${rightId}`);
-    const j=await r.json();
-    const teams=(j.teams||[]).map(x=>x.name).sort((a,b)=>a.localeCompare(b));
-    fill(selHome,teams); fill(selAway,teams);
-    if(teams.length>=2){ selHome.value=teams[0]; selAway.value=teams[1]; }
-    updateCrestsFromSelects();
-    $('#hint').textContent='🧪 Equipos cargados desde ApiSports.';
-  }catch{
-    fill(selHome,[]); fill(selAway,[]);
-    $('#hint').textContent='⚠️ No se pudieron cargar equipos para esta liga.';
-    updateCrestsFromSelects();
-  }
-}
-
-/* ===== Predecir ===== */
-async function doPredict(){
-  const home=$('#home').value, away=$('#away').value;
-  if(!home || !away || home===away){ alert('Elige dos equipos distintos'); return; }
-  const r = await api(`/predict?home=${encodeURIComponent(home)}&away=${encodeURIComponent(away)}`);
-  $('#p_home').textContent=fmt(r.p_home); $('#p_draw').textContent=fmt(r.p_draw); $('#p_away').textContent=fmt(r.p_away);
-  $('#xgh').textContent=r.exp_goals_home ?? '—'; $('#xga').textContent=r.exp_goals_away ?? '—'; $('#xgt').textContent=r.exp_goals_total ?? '—';
-  $('#over').textContent=fmt(r.ou_over25); $('#under').textContent=fmt(r.ou_under25);
-  $('#bttsYes').textContent=fmt(r.btts_yes); $('#bttsNo').textContent=fmt(r.btts_no);
-  $('#src1x2').textContent=r.src_1x2; $('#srcou').textContent=r.src_ou25; $('#srcbtts').textContent=r.src_btts;
-  $('#cornh').textContent=r.exp_corners_home ?? '—'; $('#corna').textContent=r.exp_corners_away ?? '—'; $('#cort').textContent=r.exp_corners_total ?? '—';
-  $('#corOver').textContent=fmt(r.corners_over95); $('#corUnder').textContent=fmt(r.corners_under95);
-  $('#yelh').textContent=r.exp_yellows_home ?? '—'; $('#yela').textContent=r.exp_yellows_away ?? '—'; $('#yelt').textContent=r.exp_yellows_total ?? '—';
-  $('#yelOver').textContent=fmt(r.yellows_over45); $('#yelUnder').textContent=fmt(r.yellows_under45);
-  $('#redh').textContent=r.exp_reds_home ?? '—'; $('#reda').textContent=r.exp_reds_away ?? '—'; $('#redt').textContent=r.exp_reds_total ?? '—';
-  $('#g0').textContent=fmt(r.p_goals_0); $('#g1').textContent=fmt(r.p_goals_1); $('#g2').textContent=fmt(r.p_goals_2); $('#g3p').textContent=fmt(r.p_goals_3plus);
-  renderChart(r.p_home, r.p_draw, r.p_away);
-  renderSidebarMetrics(r);
-  setCrests(home, away);
-}
-
-/* ===== Cargar/recargar ligas (dataset) ===== */
-async function reloadLeagues(){
-  const btn=$('#reload'); btn.disabled=true; btn.textContent='Cargando…';
-  try{
-    const body={ leagues: DEFAULT_LEAGUES, last_n: 5 };
-    const r=await fetch('/reload_multi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const j=await r.json();
-    const years=(typeof j.years==='string')? j.years : (Array.isArray(j.years)? j.years.join(', ') : '—');
-    const lg=body.leagues.map(c=>LEAGUE_NAMES[c]||c).join(', ');
-    $('#hint').textContent=`✅ Recargado: ${j.rows ?? '?'} partidos · Ligas: ${lg} · Años: ${years}`;
-    await loadPredictionLeagues();
-  }catch{ alert('No se pudo recargar datos. Revisa el servidor.'); }
-  btn.disabled=false; btn.textContent='🔄 Cargar ligas';
-}
-
-/* ===== Próximos 10 (sección derecha) ===== */
-/*
-async function loadNext(){
-  const sel = $('#countrySelect'); const list=$('#fixturesList');
-  if(!sel || !list){ return; }
-  const leagueId = sel.value;
-  list.innerHTML='<li>Cargando…</li>';
-  try{
-    const j = await api(`/fixtures/by-league?league_id=${encodeURIComponent(leagueId)}&next=10`);
-    list.innerHTML='';
-    (j.fixtures||[]).sort((a,b)=>new Date(a.date_utc)-new Date(b.date_utc)).forEach(f=>{
-      const li=document.createElement('li');
-      const dt=new Date(f.date_utc).toLocaleString('es-CL',{dateStyle:'short',timeStyle:'short'});
-      li.textContent=`${dt} – ${f.home?.name||'—'} vs ${f.away?.name||'—'} (${f.status||'pendiente'})`;
-      list.appendChild(li);
-    });
-    if(!j.fixtures?.length) list.innerHTML='<li>No hay partidos próximos.</li>';
-  }catch{ list.innerHTML='<li>Error al cargar</li>'; }
-}
-*/
-
-/* ===== Duelo de Selecciones (UI derecha) ===== */
-const nat$ = s => document.querySelector(s);
-const apiNat = (p, opt) => fetch(p, opt).then(r => { if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); });
-
-function natIsAdult(name){ return !/U\d+| W\b/i.test(name||''); }
-
-async function natResolveTeam(q){
-  const js = await apiNat('/teams/national?q=' + encodeURIComponent(q));
-  const list = js.teams || [];
-  const ql = (q||'').trim().toLowerCase();
-  let pick = list.find(t => natIsAdult(t.name) && (t.name||'').toLowerCase() === ql)
-         ||   list.find(t => natIsAdult(t.name) && (t.name||'').toLowerCase().startsWith(ql))
-         ||   list.find(t => natIsAdult(t.name) && (t.name||'').toLowerCase().includes(ql))
-         ||   list.find(t => natIsAdult(t.name));
-  if(!pick) throw new Error('No encontré selección para: ' + q);
-  return { id: pick.id, name: pick.name };
-}
-
-function natFmtPct(x){ return (x*100).toFixed(1) + '%'; }
-
-async function doPredictNational(){
-  const inpH = nat$('#nat-home');
-  const inpA = nat$('#nat-away');
-  const chkN = nat$('#nat-neutral');
-  const msg  = nat$('#nat-msg');
-  const out  = nat$('#nat-result');
-
-  if(!inpH || !inpA || !msg || !out) return;
-
-  out.innerHTML = '';
-  msg.textContent = 'Buscando selecciones…';
-
-  try{
-    const homeQ = (inpH.value||'').trim();
-    const awayQ = (inpA.value||'').trim();
-    if(!homeQ || !awayQ) throw new Error('Escribe ambos equipos (Local y Visita).');
-
-    // 1) Resolver IDs primero (H/A)
-    const [H, A] = await Promise.all([natResolveTeam(homeQ), natResolveTeam(awayQ)]);
-    if(!H?.id || !A?.id) throw new Error('No se pudo resolver alguna selección.');
-    if(H.id === A.id)    throw new Error('Local y visita no pueden ser la misma selección.');
-
-    // 2) Logos (ya con H/A definidos)
-    const homeLogo = imgWithFallback(logoPathForNational(H.name), H.name, 20);
-    const awayLogo = imgWithFallback(logoPathForNational(A.name), A.name, 20);
-
-    msg.textContent = `✔ ${H.name} (id ${H.id}) vs ${A.name} (id ${A.id}) — calculando…`;
-
-    // 3) Llamar predicción
-    const body = JSON.stringify({
-      home_id: H.id,
-      away_id: A.id,
-      neutral: !!(chkN && chkN.checked),
-      lookback: 10
-    });
-    const r = await apiNat('/predict/national', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body
-    });
-
-    const p   = r.probabilities || {};
-    const lam = r.lambda || {};
-    const top = Array.isArray(r.top_scores) ? r.top_scores : [];
-
-    // 4) Pintar resultado (incluye banderas/escudos)
-    out.innerHTML = `
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-        ${homeLogo}
-        <div><b>${H.name}</b></div>
-        <div style="opacity:.6">vs</div>
-        ${awayLogo}
-        <div><b>${A.name}</b></div>
-      </div>
-      <div><b>Probabilidades</b></div>
-      <div>🏠 <b>${H.name}</b>: ${natFmtPct(p.home||0)} &nbsp;|&nbsp; 🤝 Empate: ${natFmtPct(p.draw||0)} &nbsp;|&nbsp; 🚍 <b>${A.name}</b>: ${natFmtPct(p.away||0)}</div>
-      <div style="margin-top:6px"><small>λ Local: ${lam.home ?? '—'} — λ Visita: ${lam.away ?? '—'} ${chkN?.checked ? '(neutral)' : ''}</small></div>
-      <div style="margin-top:8px"><b>Marcadores más probables</b><br>${top.map(t => `${t.score} (${natFmtPct(t.p||0)})`).join(' · ') || '—'}</div>
-    `;
-    msg.textContent = 'Listo 💜';
-  }catch(e){
-    msg.textContent = e?.message || 'No se pudo predecir.';
-    out.innerHTML = '';
-    console.error(e);
-  }
-}
-/* ===== Logos / Banderas ===== */
-function slugifyEs(s){
-  return (s||'')
-    .toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // quita acentos
-    .replace(/[^a-z0-9]+/g,'')                       // solo letras/números
-    .trim();
-}
-
-// Excepciones de nombres → archivo (sin .png)
-const NAME_OVERRIDES = {
-  // 🌍 Selecciones
-  "argentina": "argentina",
-  "chile": "chile",
-  "brasil": "brasil",
-  "brazil": "brasil",
-  "espana": "espana",
-  "spain": "espana",
-  "alemania": "alemania",
-  "germany": "alemania",
-  "francia": "francia",
-  "france": "francia",
-  "italia": "italia",
-  "italy": "italia",
-  "portugal": "portugal",
-  "inglaterra": "inglaterra",
-  "england": "inglaterra",
-  "paises bajos": "paisesbajos",
-  "netherlands": "paisesbajos",
-  "holanda": "paisesbajos",
-  "mexico": "mexico",
-  "uruguay": "uruguay",
-  "colombia": "colombia",
-  "paraguay": "paraguay",
-  "peru": "peru",
-  "ecuador": "ecuador",
-  "venezuela": "venezuela",
-  "usa": "usa",
-  "united states": "usa",
-  "estados unidos": "usa",
-  "belgica": "belgica",
-  "belgium": "belgica",
-  "suiza": "suiza",
-  "switzerland": "suiza",
-  "croacia": "croacia",
-  "croatia": "croacia",
-  "serbia": "serbia",
-  "polonia": "polonia",
-  "poland": "polonia",
-  "dinamarca": "dinamarca",
-  "denmark": "dinamarca",
-  "suecia": "suecia",
-  "sweden": "suecia",
-  "noruega": "noruega",
-  "norway": "noruega",
-  "rusia": "rusia",
-  "russia": "rusia",
-  "ucrania": "ucrania",
-  "ukraine": "ucrania",
-  "japon": "japon",
-  "japan": "japon",
-  "coreadelsur": "coreadelsur",
-  "south korea": "coreadelsur",
-  "marruecos": "marruecos",
-  "morocco": "marruecos",
-  "costa rica": "costarica",
-
-  // ⚽ Clubes — LaLiga
-  "real madrid": "realmadrid",
-  "atletico madrid": "atlmadrid",
-  "barcelona": "barcelona",
-  "betis": "betis",
-  "sevilla": "sevilla",
-  "real sociedad": "realsociedad",
-  "valencia": "valencia",
-  "villarreal": "villarreal",
-  "celta vigo": "celta",
-  "athletic bilbao": "athletic",
-  "osasuna": "osasuna",
-
-  // ⚽ Clubes — Premier League
-  "arsenal": "arsenal",
-  "manchester city": "manchestercity",
-  "man city": "manchestercity",
-  "manchester united": "manchesterunited",
-  "man utd": "manchesterunited",
-  "chelsea": "chelsea",
-  "liverpool": "liverpool",
-  "tottenham": "tottenham",
-  "spurs": "tottenham",
-  "newcastle": "newcastle",
-  "west ham": "westham",
-  "everton": "everton",
-
-  // ⚽ Clubes — Bundesliga
-  "bayern munich": "bayernmunchen",
-  "bayern": "bayernmunchen",
-  "borussia dortmund": "borussiadortmund",
-  "bvb": "borussiadortmund",
-  "leverkusen": "bayerleverkusen",
-  "rb leipzig": "rbleipzig",
-  "monchengladbach": "bmonchengladbach",
-  "borussia monchengladbach": "bmonchengladbach",
-  "eintracht frankfurt": "eintrachtfrankfurt",
-  "stuttgart": "stuttgart",
-
-  // ⚽ Clubes — Serie A
-  "juventus": "juventus",
-  "inter": "inter",
-  "inter milan": "inter",
-  "ac milan": "milan",
-  "milan": "milan",
-  "napoli": "napoli",
-  "roma": "roma",
-  "lazio": "lazio",
-  "atalanta": "atalanta",
-  "fiorentina": "fiorentina",
-
-  // ⚽ Clubes — Ligue 1
-  "psg": "psg",
-  "paris saint germain": "psg",
-  "olympique lyon": "olympiquelyon",
-  "lyon": "olympiquelyon",
-  "olympique marseille": "olimpiquemarsella",
-  "marsella": "olimpiquemarsella",
-  "monaco": "monaco",
-  "lille": "lille",
-  "nantes": "nantes",
-};
-
-function logoPathForNational(teamName){
-  // Carpeta: assets/selecciones/*.png (en español)
-  // Intentamos override → slug directo
-  const base = '/assets/selecciones/';
-  const raw = (teamName||'').toLowerCase().trim();
-
-  // Normalización fuerte para buscar override
-  const key = raw.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-  const override = NAME_OVERRIDES[key];
-  const file = override ? override : slugifyEs(teamName);
-
-  return base + file + '.png';
-}
-
-function logoPathForClub(leagueFolder, teamName){
-  // leagueFolder: 'premier' | 'laliga' | 'bundesliga' | 'seriea' | 'ligue1' | ...
-  const base = `/assets/${leagueFolder}/`;
-  const key = (teamName||'').toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-  const override = NAME_OVERRIDES[key];
-  const file = override ? override : slugifyEs(teamName);
-  return base + file + '.png';
-}
-
-// IMG helper con fallback
-function imgWithFallback(src, alt='logo', size=24){
-  const img = document.createElement('img');
-  img.src = src;
-  img.alt = alt;
-  img.width = size;
-  img.height = size;
-  img.decoding = 'async';
-  img.style.verticalAlign = 'middle';
-  img.style.objectFit = 'contain';
-  img.onerror = () => { img.onerror = null; img.src = '/assets/logo.png'; }; // fallback global
-  return img;
-}
-
-/* ===== Eventos ===== */
-document.addEventListener('DOMContentLoaded', async ()=>{
-  await init();
-  await loadRecent();
-  await loadPredictionLeagues();
-
-  // Listeners
-  $('#leagueSelect')?.addEventListener('change', loadTeams);
-  $('#home')?.addEventListener('change', updateCrestsFromSelects);
-  $('#away')?.addEventListener('change', updateCrestsFromSelects);
-  $('#reload')?.addEventListener('click', reloadLeagues);
-  $('#predict')?.addEventListener('click', doPredict);
-  $('#btnFixtures')?.addEventListener('click', loadNext);
-  document.querySelector('#nat-go')?.addEventListener('click', doPredictNational);
-
-  // PINTA escudos iniciales (clubs)
-  updateCrestsFromSelects();
-
-  // carga inicial de fixtures (derecha)
-  loadNext();
-});
-
-</script>
-
-<!-- Fuente de emoji para banderitas -->
-<style>
-  select, option { font-family: system-ui, "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif; }
-</style>
+  <!-- Tu JS -->
+  <script src="/assets/app.js?v=21"></script>
+
+  <script>
+    // Tema oscuro/claro
+    (function () {
+      const t = localStorage.getItem('sp-theme');
+      if (t) document.documentElement.setAttribute('data-theme', t);
+      document.getElementById('theme-toggle')?.addEventListener('click', () => {
+        const curr = document.documentElement.getAttribute('data-theme') || 'dark';
+        const next = curr === 'light' ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem('sp-theme', next);
+      });
+    })();
+  </script>
 </body>
 </html>

@@ -1,10 +1,10 @@
 # backend/app.py
-from fastapi.responses import JSONResponse 
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from __future__ import annotations
+
+from fastapi import FastAPI, Query, Body, HTTPException
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi import FastAPI, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import HTTPException
 from pydantic import BaseModel
 
 import os
@@ -17,12 +17,31 @@ import pandas as pd
 import numpy as np
 import joblib
 from dotenv import load_dotenv
-
 import httpx
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
+
+# --- Parche para modelos XGBoost serializados antiguos ---
+def _patch_legacy_xgb_bundle(bundle):
+    """
+    Evita errores tipo:
+      AttributeError: 'XGBClassifier' object has no attribute 'use_label_encoder'
+    y diferencias de predictor entre versiones.
+    """
+    if bundle is None:
+        return None
+    # bundle puede ser un dict {"model": xgb, "features":[...]} o el modelo directo
+    mdl = bundle["model"] if isinstance(bundle, dict) and "model" in bundle else bundle
+    try:
+        if not hasattr(mdl, "use_label_encoder"):
+            setattr(mdl, "use_label_encoder", False)
+        if not hasattr(mdl, "predictor"):
+            setattr(mdl, "predictor", None)
+    except Exception as e:
+        print("[WARN] No pude parchear modelo XGB:", repr(e))
+    return bundle
 
 # ==== Carga de .env (claves API) ====
-load_dotenv()  # APISPORTS_KEY, APIFOOTBALL_KEY en backend/.env
+load_dotenv()  # APISPORTS_KEY, APIFOOTBALL_API_KEY en backend/.env
 
 APISPORTS_KEY    = os.getenv("APISPORTS_KEY")
 APIFOOTBALL_KEY  = os.getenv("APIFOOTBALL_API_KEY")
@@ -31,7 +50,7 @@ APISPORTS_BASE   = os.getenv("APISPORTS_BASE", "https://v3.football.api-sports.i
 APIFOOTBALL_BASE = os.getenv("APIFOOTBALL_BASE", "https://apiv3.apifootball.com/")
 
 # ==== Importar proveedor ApiSports (nuestro cliente HTTPX) ====
-from backend.providers import apisports  # asegurarse que exista backend/providers/apisports.py
+from backend.providers import apisports  # asegúrate que exista backend/providers/apisports.py
 
 # ==== Modelos y utilidades del proyecto ====
 from backend.models.baseline import PoissonModel
@@ -42,11 +61,10 @@ from backend.train_btts import MODEL_BTTS_PATH
 from backend.models.features import build_training_table
 from backend.utils.data_loader import load_league_history
 
-
 # ---------- App & CORS ----------
 app = FastAPI(
     title="Nuestro Bebé App",
-    version="0.8",
+    version="0.8.1",
     swagger_ui_parameters={"defaultModelsExpandDepth": -1},
 )
 
@@ -56,6 +74,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 # --- Configuración de ligas soportadas y temporadas ---
 DEFAULT_SEASONS: List[str] = ["2526", "2425", "2324", "2223", "2122"]
 
@@ -86,6 +105,23 @@ df_global: Optional[pd.DataFrame] = None
 Xy_global: Optional[pd.DataFrame] = None
 current_csv_path: Optional[Path] = None
 
+# ---------- Estado modelos ----------
+model = PoissonModel()
+clf_bundle = None       # XGB 1X2
+clf_ou_bundle = None    # XGB Over/Under 2.5
+clf_btts_bundle = None  # XGB BTTS
+
+# ---------- Paths datos ----------
+LOCAL_SAMPLE = Path(__file__).parent / "data" / "sample_matches.csv"
+DATA_PATH = MERGED if MERGED.exists() else LOCAL_SAMPLE
+
+# ---------- Frontend ----------
+FRONT_DIR = Path(__file__).parent.parent / "frontend"
+app.mount("/app", StaticFiles(directory=str(FRONT_DIR), html=True), name="frontend")
+app.mount("/assets", StaticFiles(directory=str(FRONT_DIR / "assets")), name="assets")
+app.mount("/app/assets", StaticFiles(directory=str(FRONT_DIR / "assets")), name="assets_app")  # alias útil
+
+# ---------- Utilidades internas ----------
 def _set_data(df: pd.DataFrame, csv_path: Path | None = None, build_features: bool = True):
     """Carga dataset en memoria, re-entrena Poisson y opcionalmente construye features."""
     global df_global, Xy_global, current_csv_path, model
@@ -152,13 +188,20 @@ def top_drivers(row: pd.DataFrame, feature_list: list[str], k: int = 3):
         out.append(f"{pretty} {arrow}")
     return out
 
-# ---------- Datos / Frontend ----------
-LOCAL_SAMPLE = Path(__file__).parent / "data" / "sample_matches.csv"
-DATA_PATH = MERGED if MERGED.exists() else LOCAL_SAMPLE
+# ---------- Helpers simples ----------
+def _safe_ts(dt_str: str) -> int:
+    """Convierte 'YYYY-MM-DD HH:MM' a timestamp para ordenar; 0 si falla."""
+    try:
+        return int(datetime.fromisoformat(dt_str.replace(" ", "T")).timestamp())
+    except Exception:
+        return 0
 
-FRONT_DIR = Path(__file__).parent.parent / "frontend"
-app.mount("/app", StaticFiles(directory=str(FRONT_DIR), html=True), name="frontend")
-app.mount("/assets", StaticFiles(directory=str(FRONT_DIR / "assets")), name="assets")  # 👈 nuevo
+def _to_int(s):
+    """Convierte '2' → 2; '', None → None; tolera strings raros."""
+    try:
+        return int(s) if s is not None and str(s).strip() != "" else None
+    except Exception:
+        return None
 
 # ---------- Response Model ----------
 class PredictResponse(BaseModel):
@@ -204,12 +247,7 @@ class NationalPredictIn(BaseModel):
     neutral: bool = False
     lookback: int = 10  # últimos N partidos para estimar tasas
 
-# ---------- Modelos en memoria ----------
-model = PoissonModel()
-clf_bundle = None       # XGB 1X2
-clf_ou_bundle = None    # XGB Over/Under 2.5
-clf_btts_bundle = None  # XGB BTTS
-
+# ---------- Startup ----------
 @app.on_event("startup")
 def _load_and_train():
     global clf_bundle, clf_ou_bundle, clf_btts_bundle
@@ -223,6 +261,11 @@ def _load_and_train():
     clf_bundle      = joblib.load(MODEL_PATH)      if MODEL_PATH.exists()      else None
     clf_ou_bundle   = joblib.load(MODEL_OU_PATH)   if MODEL_OU_PATH.exists()   else None
     clf_btts_bundle = joblib.load(MODEL_BTTS_PATH) if MODEL_BTTS_PATH.exists() else None
+
+    # 🔧 Parchea modelos XGB legacy para evitar AttributeError
+    clf_bundle      = _patch_legacy_xgb_bundle(clf_bundle)
+    clf_ou_bundle   = _patch_legacy_xgb_bundle(clf_ou_bundle)
+    clf_btts_bundle = _patch_legacy_xgb_bundle(clf_btts_bundle)
 
     # Precarga features (warmup)
     _ensure_data_loaded()
@@ -269,7 +312,6 @@ def reload_multi(
     last_n: Optional[int] = Body(4, embed=True),
     build_features: bool = Body(False, embed=True),
 ):
-    # Armado de kwargs compatible con refresh_dataset
     kwargs = {}
     if start_years:
         kwargs["start_years"] = tuple(start_years)
@@ -295,8 +337,8 @@ def reload_multi(
 async def providers_ping():
     """Comprueba si las llaves de los proveedores están cargadas."""
     return {
-        "apisports_key_loaded": bool(os.getenv("APISPORTS_KEY")),
-        "apifootball_key_loaded": bool(os.getenv("APIFOOTBALL_KEY")),
+        "apisports_key_loaded": bool(APISPORTS_KEY),
+        "apifootball_key_loaded": bool(APIFOOTBALL_KEY),
     }
 
 @app.get("/leagues/by-country")
@@ -308,21 +350,16 @@ async def leagues_by_country(
 
 @app.get("/fixtures/by-league")
 async def fixtures_by_league(
-    league_id: str,
-    season: int | None = None,
-    date: str | None = None,
-    next: int | None = None,
-    days: int | None = 30,
+    league_id: str = Query(..., description="ID de liga ApiSports (p.ej. 39)"),
+    season: int | None = Query(None),
+    date_: str | None = Query(None, alias="date"),
+    next_: int | None = Query(None, alias="next"),
+    days: int | None = Query(30),
 ):
-    fixtures = await apisports.fixtures_by_league(league_id, season=season, date=date, next=next, days=days or 30)
-    return {"count": len(fixtures), "fixtures": fixtures}
-
-    """Partidos por liga usando date/season o atajos next/last (no combinar next y last)."""
-    if next is not None and last is not None:
-        return {"error": "Usa sólo uno: 'next' o 'last'."}
-    fixtures = await apisports.fixtures_by_league(
-        league_id, season=season, date=date, next_=next, last_=last
-    )
+    """Partidos por liga usando date/season o atajo next. No combinar 'next' con 'days/date'."""
+    if next_ is not None and (date_ or days not in (None, 30) or season is not None):
+        raise HTTPException(status_code=400, detail="Usa 'next' solo, o usa 'date/season/days' sin 'next'.")
+    fixtures = await apisports.fixtures_by_league(league_id, season=season, date=date_, next=next_, days=days or 30)
     return {"count": len(fixtures), "fixtures": fixtures}
 
 @app.get("/fixtures/global_next5")
@@ -366,6 +403,155 @@ async def fixtures_global_next5(tz: str = "America/Santiago", days: int = 14):
     items.sort(key=lambda x: x["datetime"])
     return {"count": min(5, len(items)), "fixtures": items[:5]}
 
+# --- Top Scorers (ApiSports) ---
+CODE_TO_ID = {
+    "E0": 39,    # Premier League
+    "SP1": 140,  # LaLiga
+    "I1": 135,   # Serie A
+    "D1": 78,    # Bundesliga
+    "F1": 61,    # Ligue 1
+    # agrega los que uses...
+}
+
+@app.get("/topscorers")
+async def topscorers(
+    league: Optional[str] = Query(None, description="Código tipo E0, SP1…"),
+    league_id: Optional[int] = Query(None, description="ID ApiSports (p.ej. 39 Premier)"),
+    season: Optional[int] = Query(None, description="Año de inicio de la temporada, ej 2024"),
+):
+    if not APISPORTS_KEY:
+        raise HTTPException(status_code=500, detail="Falta APISPORTS_KEY")
+
+    # Resolver ID de liga si solo mandaron código
+    if league_id is None:
+        if not league:
+            raise HTTPException(status_code=422, detail="Manda league_id numérico o league (código).")
+        code = league.upper()
+        if code not in CODE_TO_ID:
+            raise HTTPException(status_code=400, detail=f"Código de liga no soportado: {code}")
+        league_id = CODE_TO_ID[code]
+
+    if season is None:
+        season = date.today().year
+
+    url = f"{APISPORTS_BASE}/players/topscorers"
+    headers = {"x-apisports-key": APISPORTS_KEY}
+
+    async def _fetch(season_year: int):
+        params = {"league": league_id, "season": season_year}
+        async with httpx.AsyncClient(timeout=40.0) as cx:
+            r = await cx.get(url, headers=headers, params=params)
+            r.raise_for_status()
+            return r.json()
+
+    # Primer intento con la temporada pedida
+    payload = await _fetch(season)
+    resp = payload.get("response") or []
+
+    # Fallback: probar con la temporada anterior si está vacío
+    if not resp and season > 2000:
+        payload = await _fetch(season - 1)
+        resp = payload.get("response") or []
+
+    # Normaliza para el frontend
+    items = []
+    for it in resp:
+        player = it.get("player") or {}
+        stats  = (it.get("statistics") or [{}])[0]
+        team   = (stats.get("team") or {})
+        goals  = (stats.get("goals") or {}).get("total")
+        items.append({
+            "player_name": player.get("name") or f"{player.get('firstname','')} {player.get('lastname','')}".strip(),
+            "photo": player.get("photo"),
+            "team_name": team.get("name"),
+            "goals": goals or 0,
+            "player": player,
+            "statistics": it.get("statistics"),
+            "team": team,
+        })
+
+    return {"count": len(items), "players": items}
+
+# ---------- Últimos resultados (APIFOOTBALL) ----------
+@app.get("/recent_live")
+async def recent_live(days: int = 8, limit: int = 10):
+    """
+    Últimos resultados FINALIZADOS (días hacia atrás).
+    Devuelve: Date, League, HomeTeam, AwayTeam, FTHG, FTAG
+    """
+    if not APIFOOTBALL_KEY:
+        raise HTTPException(status_code=500, detail="Falta APIFOOTBALL_API_KEY")
+
+    start = date.today() - timedelta(days=max(1, min(days, 30)))
+    end   = date.today()
+
+    params = {
+        "APIkey": APIFOOTBALL_KEY,
+        "action": "get_events",
+        "from": start.isoformat(),
+        "to":   end.isoformat(),
+        "timezone": "UTC",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=40.0) as cx:
+            r = await cx.get(APIFOOTBALL_BASE, params=params)
+            r.raise_for_status()
+            data = r.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Proveedor falló: {e}")
+
+    if not isinstance(data, list):
+        return {"matches": []}
+
+    FINISHED_KEYS = {
+        "finished", "ft", "ended", "match finished",
+        "after extra time", "aet", "after penalties", "ap"
+    }
+    EXCLUDE_KEYS = {"postponed", "canceled", "cancelled", "abandoned", "walkover"}
+
+    items = []
+    for it in data:
+        dt = f"{it.get('match_date','')} {it.get('match_time','')}".strip()
+
+        # goles FT (compatibilidad)
+        home_ft = it.get("match_hometeam_ft_score")
+        away_ft = it.get("match_awayteam_ft_score")
+        if home_ft is None and away_ft is None:
+            home_ft = it.get("match_hometeam_score")
+            away_ft = it.get("match_awayteam_score")
+
+        # estado normalizado
+        raw_status = (it.get("match_status") or "").strip()
+        status_norm = raw_status.lower()
+
+        # criterio de finalizado
+        is_finished = (
+            status_norm in FINISHED_KEYS or
+            (_to_int(home_ft) is not None and _to_int(away_ft) is not None and status_norm not in EXCLUDE_KEYS)
+        )
+        if not is_finished:
+            continue
+
+        items.append({
+            "Date":     dt.split(" ")[0] if dt else "",
+            "League":   it.get("league_name") or "",
+            "HomeTeam": it.get("match_hometeam_name") or "",
+            "AwayTeam": it.get("match_awayteam_name") or "",
+            "FTHG":     _to_int(home_ft),
+            "FTAG":     _to_int(away_ft),
+            "ts":       _safe_ts(dt),
+        })
+
+    # Orden y límite
+    items.sort(key=lambda x: x.get("ts", 0), reverse=True)
+    items = items[:max(1, min(limit, 50))]
+    for it in items:
+        it.pop("ts", None)
+
+    return {"matches": items}
+
+# ---------- Proveedor teams por liga (ApiSports) ----------
 @app.get("/providers/teams")
 async def providers_teams(
     league_id: str = Query(..., description="ID de liga en ApiSports"),
@@ -400,7 +586,7 @@ async def predict_national(inp: NationalPredictIn):
     - Usa partidos recientes reales (ApiSports) para estimar λ por Poisson
     - Devuelve probabilidades Home/Draw/Away y marcadores más probables
     """
-    if not os.getenv("APISPORTS_KEY"):
+    if not APISPORTS_KEY:
         raise HTTPException(status_code=500, detail="Falta APISPORTS_KEY en backend/.env")
 
     lam_h, lam_a = await _poisson_rates_from_recent(
@@ -673,123 +859,161 @@ def predict(
         res["src_1x2"] = "ml"
         print(f"[PERF] ML 1X2 tomó {time.time() - t1:.3f} s")
 
-    # Over/Under 2.5 (ML/fallback)
+    # Over/Under 2.5 (ML con fallback seguro)
     if clf_ou_bundle:
-        t2 = time.time()
-        Xy = _get_Xy()
+        try:
+            t2 = time.time()
+            Xy = _get_Xy()
 
-        def prof_ou(Xy, team, is_home):
-            cols = [c for c in Xy.columns if c.startswith("H_" if is_home else "A_")]
-            mask = (Xy["HomeTeam"] == team) if is_home else (Xy["AwayTeam"] == team)
-            return Xy.loc[mask, cols].tail(5).median() if len(Xy.loc[mask, cols]) else pd.Series({c: 0.0 for c in cols})
+            def _prof_ou(Xy, team, is_home):
+                cols = [c for c in Xy.columns if c.startswith("H_" if is_home else "A_")]
+                mask = (Xy["HomeTeam"] == team) if is_home else (Xy["AwayTeam"] == team)
+                if mask.any():
+                    return Xy.loc[mask, cols].tail(5).median()
+                return pd.Series({c: 0.0 for c in cols})
 
-        hp, ap = prof_ou(Xy, home, True), prof_ou(Xy, away, False)
-        Elo_H = Xy.loc[Xy["HomeTeam"] == home, "Elo_H"].tail(1)
-        Elo_A = Xy.loc[Xy["AwayTeam"] == away, "Elo_A"].tail(1)
-        if len(Elo_H) == 0: Elo_H = pd.Series([Xy["Elo_H"].median()])
-        if len(Elo_A) == 0: Elo_A = pd.Series([Xy["Elo_A"].median()])
+            hp, ap = _prof_ou(Xy, home, True), _prof_ou(Xy, away, False)
+            Elo_H = Xy.loc[Xy["HomeTeam"] == home, "Elo_H"].tail(1)
+            Elo_A = Xy.loc[Xy["AwayTeam"] == away, "Elo_A"].tail(1)
+            if len(Elo_H) == 0: Elo_H = pd.Series([Xy["Elo_H"].median()])
+            if len(Elo_A) == 0: Elo_A = pd.Series([Xy["Elo_A"].median()])
 
-        row_ou = pd.DataFrame([{
-            "Elo_H": float(Elo_H.values[-1]), "Elo_A": float(Elo_A.values[-1]),
-            **{k: float(v) for k, v in hp.items()},
-            **{k: float(v) for k, v in ap.items()},
-        }])
-        feats_ou = clf_ou_bundle["features"]
-        row_ou = row_ou.reindex(columns=feats_ou).fillna(row_ou.median(numeric_only=True))
-        p_over = float(clf_ou_bundle["model"].predict_proba(row_ou)[0, 1])
-        res["ou_over25"] = round(p_over, 4)
-        res["ou_under25"] = round(1.0 - p_over, 4)
-        res["src_ou25"] = "ml"
-        print(f"[PERF] ML OU tomó {time.time() - t2:.3f} s")
+            row_ou = pd.DataFrame([{
+                "Elo_H": float(Elo_H.values[-1]), "Elo_A": float(Elo_A.values[-1]),
+                **{k: float(v) for k, v in hp.items()},
+                **{k: float(v) for k, v in ap.items()},
+            }])
+            feats_ou = clf_ou_bundle["features"]
+            row_ou = row_ou.reindex(columns=feats_ou).fillna(row_ou.median(numeric_only=True))
+
+            p_over = float(clf_ou_bundle["model"].predict_proba(row_ou)[0, 1])
+
+            res["ou_over25"] = round(p_over, 4)
+            res["ou_under25"] = round(1.0 - p_over, 4)
+            res["src_ou25"] = "ml"
+            print(f"[PERF] ML OU tomó {time.time() - t2:.3f} s")
+        except Exception as e:
+            xt = res.get("exp_goals_total")
+            if xt is None:
+                eh = float(res.get("exp_goals_home", 0.0))
+                ea = float(res.get("exp_goals_away", 0.0))
+                xt = eh + ea
+            p_over = 1.0 / (1.0 + math.exp(-1.1 * (xt - 2.5)))
+            res["ou_over25"] = round(p_over, 4)
+            res["ou_under25"] = round(1.0 - p_over, 4)
+            res["src_ou25"] = "xg"
+            print("[WARN] OU ML fallback por error:", repr(e))
     else:
-        xt = res["exp_goals_total"]
+        xt = res.get("exp_goals_total")
+        if xt is None:
+            eh = float(res.get("exp_goals_home", 0.0))
+            ea = float(res.get("exp_goals_away", 0.0))
+            xt = eh + ea
         p_over = 1.0 / (1.0 + math.exp(-1.1 * (xt - 2.5)))
         res["ou_over25"] = round(p_over, 4)
         res["ou_under25"] = round(1.0 - p_over, 4)
         res["src_ou25"] = "xg"
 
-    # BTTS (ML/fallback)
+    # BTTS (ML con fallback seguro)
     if clf_btts_bundle:
-        t3 = time.time()
-        Xy = _get_Xy()
+        try:
+            t3 = time.time()
+            Xy = _get_Xy()
 
-        def prof_bt(Xy, team, is_home):
-            cols = [c for c in Xy.columns if c.startswith("H_" if is_home else "A_")]
-            mask = (Xy["HomeTeam"] == team) if is_home else (Xy["AwayTeam"] == team)
-            return Xy.loc[mask, cols].tail(5).median() if len(Xy.loc[mask, cols]) else pd.Series({c: 0.0 for c in cols})
+            def _prof_bt(Xy, team, is_home):
+                cols = [c for c in Xy.columns if c.startswith("H_" if is_home else "A_")]
+                mask = (Xy["HomeTeam"] == team) if is_home else (Xy["AwayTeam"] == team)
+                if mask.any():
+                    return Xy.loc[mask, cols].tail(5).median()
+                return pd.Series({c: 0.0 for c in cols})
 
-        hp, ap = prof_bt(Xy, home, True), prof_bt(Xy, away, False)
-        Elo_H = Xy.loc[Xy["HomeTeam"] == home, "Elo_H"].tail(1)
-        Elo_A = Xy.loc[Xy["AwayTeam"] == away, "Elo_A"].tail(1)
-        if len(Elo_H) == 0: Elo_H = pd.Series([Xy["Elo_H"].median()])
-        if len(Elo_A) == 0: Elo_A = pd.Series([Xy["Elo_A"].median()])
+            hp, ap = _prof_bt(Xy, home, True), _prof_bt(Xy, away, False)
+            Elo_H = Xy.loc[Xy["HomeTeam"] == home, "Elo_H"].tail(1)
+            Elo_A = Xy.loc[Xy["AwayTeam"] == away, "Elo_A"].tail(1)
+            if len(Elo_H) == 0: Elo_H = pd.Series([Xy["Elo_H"].median()])
+            if len(Elo_A) == 0: Elo_A = pd.Series([Xy["Elo_A"].median()])
 
-        row_bt = pd.DataFrame([{
-            "Elo_H": float(Elo_H.values[-1]), "Elo_A": float(Elo_A.values[-1]),
-            **{k: float(v) for k, v in hp.items()},
-            **{k: float(v) for k, v in ap.items()},
-        }])
-        feats_bt = clf_btts_bundle["features"]
-        row_bt = row_bt.reindex(columns=feats_bt).fillna(row_bt.median(numeric_only=True))
-        p_yes = float(clf_btts_bundle["model"].predict_proba(row_bt)[0, 1])
-        res["btts_yes"] = round(p_yes, 4)
-        res["btts_no"]  = round(1.0 - p_yes, 4)
-        res["src_btts"] = "ml"
-        print(f"[PERF] ML BTTS tomó {time.time() - t3:.3f} s")
+            row_bt = pd.DataFrame([{
+                "Elo_H": float(Elo_H.values[-1]), "Elo_A": float(Elo_A.values[-1]),
+                **{k: float(v) for k, v in hp.items()},
+                **{k: float(v) for k, v in ap.items()},
+            }])
+            feats_bt = clf_btts_bundle["features"]
+            row_bt = row_bt.reindex(columns=feats_bt).fillna(row_bt.median(numeric_only=True))
+
+            p_yes = float(clf_btts_bundle["model"].predict_proba(row_bt)[0, 1])
+
+            res["btts_yes"] = round(p_yes, 4)
+            res["btts_no"]  = round(1.0 - p_yes, 4)
+            res["src_btts"] = "ml"
+            print(f"[PERF] ML BTTS tomó {time.time() - t3:.3f} s")
+        except Exception as e:
+            lam_h = float(res.get("exp_goals_home", 0.0))
+            lam_a = float(res.get("exp_goals_away", 0.0))
+            p_yes = (1 - math.exp(-lam_h)) * (1 - math.exp(-lam_a))
+            res["btts_yes"] = round(p_yes, 4)
+            res["btts_no"]  = round(1.0 - p_yes, 4)
+            res["src_btts"] = "poisson"
+            print("[WARN] BTTS ML fallback por error:", repr(e))
     else:
-        lam_h = res["exp_goals_home"]; lam_a = res["exp_goals_away"]
+        lam_h = float(res.get("exp_goals_home", 0.0))
+        lam_a = float(res.get("exp_goals_away", 0.0))
         p_yes = (1 - math.exp(-lam_h)) * (1 - math.exp(-lam_a))
         res["btts_yes"] = round(p_yes, 4)
         res["btts_no"]  = round(1.0 - p_yes, 4)
         res["src_btts"] = "poisson"
 
-    # Córners / Amarillas / Rojas / Distribución de goles
-    df = df_global
+    # ======== PÍLDORAS extra: córners, amarillas, rojas ========
+    df = df_global  # usa tu dataframe global
+    eh = float(res.get("exp_goals_home", 0.0))
+    ea = float(res.get("exp_goals_away", 0.0))
+    et = float(res.get("exp_goals_total", eh + ea)) or (eh + ea)
+    share_h = 0.5 if et <= 1e-9 else max(0.15, min(0.85, eh / et))  # reparte al local
 
-    # Córners
+    # --- Córners ---
     exp_ch = exp_ca = exp_ct = over95 = under95 = None
     if df is not None and _col_ok(df, "HC") and _col_ok(df, "AC"):
         exp_ch = _recent_mean_home(df, home, "HC", n=10)
         exp_ca = _recent_mean_away(df, away, "AC", n=10)
         exp_ct = _sum_opt(exp_ch, exp_ca)
-        if exp_ct is not None:
-            cdf9 = _poisson_cdf(9, exp_ct)   # 9.5
-            if cdf9 is not None:
-                over95  = _clip01(1.0 - cdf9)
-                under95 = _clip01(cdf9)
+    else:
+        exp_ct = max(6.0, min(15.0, 4.2 + 2.6 * et))
+        exp_ch = exp_ct * share_h
+        exp_ca = exp_ct * (1.0 - share_h)
+    cdf9 = _poisson_cdf(9, exp_ct) if exp_ct is not None else None
+    if cdf9 is not None:
+        over95, under95 = max(0.0, min(1.0, 1.0 - cdf9)), max(0.0, min(1.0, cdf9))
     res["exp_corners_home"]  = round(exp_ch, 2) if exp_ch is not None else None
     res["exp_corners_away"]  = round(exp_ca, 2) if exp_ca is not None else None
     res["exp_corners_total"] = round(exp_ct, 2) if exp_ct is not None else None
     res["corners_over95"]    = round(over95, 4) if over95 is not None else None
     res["corners_under95"]   = round(under95, 4) if under95 is not None else None
 
-    # Amarillas
-    yh = ya = yt = y_over = y_under = None
+    # --- Amarillas (aprox lineal con xG si no hay columnas YC) ---
+    exp_yh = exp_ya = None
     if df is not None and _col_ok(df, "HY") and _col_ok(df, "AY"):
-        yh = _recent_mean_home(df, home, "HY", n=10)
-        ya = _recent_mean_away(df, away, "AY", n=10)
-        yt = _sum_opt(yh, ya)
-        if yt is not None:
-            cdf4 = _poisson_cdf(4, yt)  # 4.5
-            if cdf4 is not None:
-                y_over  = _clip01(1.0 - cdf4)
-                y_under = _clip01(cdf4)
-    res["exp_yellows_home"]  = round(yh, 2) if yh is not None else None
-    res["exp_yellows_away"]  = round(ya, 2) if ya is not None else None
-    res["exp_yellows_total"] = round(yt, 2) if yt is not None else None
-    res["yellows_over45"]    = round(y_over, 4) if y_over is not None else None
-    res["yellows_under45"]   = round(y_under, 4) if y_under is not None else None
+        exp_yh = _recent_mean_home(df, home, "HY", n=10)
+        exp_ya = _recent_mean_away(df, away, "AY", n=10)
+    else:
+        base_y = max(2.5, min(7.0, 3.0 + 0.7 * et))
+        exp_yh = base_y * (0.55 * share_h + 0.45 * (1 - share_h))
+        exp_ya = base_y - exp_yh
+    res["exp_yellows_home"] = round(exp_yh, 2) if exp_yh is not None else None
+    res["exp_yellows_away"] = round(exp_ya, 2) if exp_ya is not None else None
 
-    # Rojas
-    rh = ra = rt = None
+    # --- Rojas (muy raras; pequeña fracción de amarillas) ---
+    exp_rh = exp_ra = None
     if df is not None and _col_ok(df, "HR") and _col_ok(df, "AR"):
-        rh = _recent_mean_home(df, home, "HR", n=12)
-        ra = _recent_mean_away(df, away, "AR", n=12)
-        rt = _sum_opt(rh, ra)
-    res["exp_reds_home"]  = round(rh, 2) if rh is not None else None
-    res["exp_reds_away"]  = round(ra, 2) if ra is not None else None
-    res["exp_reds_total"] = round(rt, 2) if rt is not None else None
+        exp_rh = _recent_mean_home(df, home, "HR", n=15)
+        exp_ra = _recent_mean_away(df, away, "AR", n=15)
+    else:
+        ratio_r = 0.08  # ~8% de las amarillas derivan en roja (aprox)
+        exp_rh = ratio_r * (exp_yh or 0.0)
+        exp_ra = ratio_r * (exp_ya or 0.0)
+    res["exp_reds_home"] = round(exp_rh, 3) if exp_rh is not None else None
+    res["exp_reds_away"] = round(exp_ra, 3) if exp_ra is not None else None
 
+    # Distribución de goles (0/1/2/3+)
     lam = res.get("exp_goals_total", None)
     if lam is not None:
         p0 = _poisson_pmf(0, lam)
@@ -799,7 +1023,7 @@ def predict(
             res["p_goals_0"]     = round(p0, 4)
             res["p_goals_1"]     = round(p1, 4)
             res["p_goals_2"]     = round(p2, 4)
-            res["p_goals_3plus"] = round(_clip01(1.0 - (p0+p1+p2)), 4)
+            res["p_goals_3plus"] = round(max(0.0, min(1.0, 1.0 - (p0 + p1 + p2))), 4)
 
     total_elapsed = time.time() - start_total
     print(f"[PERF] Predicción COMPLETA {home} vs {away} tomó {total_elapsed:.3f} s")

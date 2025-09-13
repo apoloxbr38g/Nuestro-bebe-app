@@ -18,3 +18,8 @@ frontend/dist/
 frontend/node_modules/
 .DS_Store
 *.swp
+.venv/
+backend/data/**
+backend/models/*.pkl
+backend/.env
+__pycache__/
