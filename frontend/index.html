@@ -203,21 +203,30 @@
       </nav>
     </aside>
 
-    <!-- Main -->
-    <div>
-      <header>
-        <div>
-          <div id="title" style="font-size:22px; font-weight:700">Bienvenido, Usuario..</div>
-          <div id="subtitle" style="color:var(--muted); font-size:12px; margin-top:2px">Bienvenido, nos alegra volver a verte!!!</div>
-        </div>
-        <div style="display:flex; gap:10px; align-items:center">
-          <button id="theme-toggle" class="pill" type="button" title="Cambiar tema">🌓 Tema</button>
-          <button class="bell" aria-label="Notificaciones">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-            <span class="dot"></span>
-          </button>
-        </div>
-      </header>
+<!-- Main -->
+<div>
+  <header>
+  <div>
+    <div id="title" style="font-size:22px; font-weight:700">Bienvenido, Usuario..</div>
+    <div id="subtitle" style="color:var(--muted); font-size:12px; margin-top:2px">Bienvenido, nos alegra volver a verte!!!</div>
+  </div>
+  <div style="display:flex; gap:10px; align-items:center">
+    <button id="theme-toggle" class="pill" type="button" title="Cambiar tema">🌓 Tema</button>
+    <button class="bell" aria-label="Notificaciones">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      <span class="dot"></span>
+    </button>
+
+    <!-- 🔑 Login compact -->
+    <div id="login-box" style="display:flex; gap:6px; align-items:center;">
+      <input id="login-user"  class="input" placeholder="Usuario" style="width:120px">
+      <input id="login-pass"  class="input" type="password" placeholder="Contraseña" style="width:120px">
+      <button id="login-submit" class="pill" type="button">Iniciar</button>
+      <button id="btn-logout" class="pill" type="button" style="display:none">Salir</button>
+      <span id="login-error" style="color:#f87171; font-size:12px"></span>
+    </div>
+  </div>
+</header>
 
       <!-- HOME -->
       <section id="view-home" class="view fade">

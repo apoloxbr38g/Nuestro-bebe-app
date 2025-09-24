@@ -1080,4 +1080,4 @@ def explain(
 
     if clf_btts_bundle and "features" in clf_btts_bundle:
         feats = clf_btts_bundle["features"]
-        row = base_row.reindex(columns=feats)
+        row = base_row.reindex(columns=feats).
